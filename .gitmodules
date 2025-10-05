@@ -1,0 +1,6 @@
+[submodule "depend/minhookstb"]
+	path = depend/minhookstb
+	url = https://github.com/YuriSizuku/alter-MinhookStb.git
+[submodule "depend/winreverse"]
+	path = depend/winreverse
+	url = https://github.com/YuriSizuku/toolkit-WinReverse.git

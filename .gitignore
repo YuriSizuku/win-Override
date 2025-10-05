@@ -1,0 +1,17 @@
+*.pyc
+*.o
+*.obj
+*..iobj
+*.pdb
+*.ipdb
+*.exp
+*.ilk
+*.vcxproj.user
+*.vcxproj.filter
+
+.vs
+.vscode
+__pycache__
+
+build/*
+tmp/*

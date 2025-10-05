@@ -1,0 +1,55 @@
+name: build_wintools
+on:
+  push: {tags:  ['v*'] } # Push events to matching v*, i.e. v1.0, v20.15.10
+  pull_request: 
+
+permissions:
+  contents: write
+  
+jobs:
+  build_wintools:
+    runs-on: windows-2025
+    strategy:
+      matrix: 
+        project: 
+          - {targetname: winloader, targetext: exe}
+          - {targetname: libwinversion, targetext: dll}
+          - {targetname: libwinoverride, targetext: dll}
+    steps:
+    - name: pull and init
+      uses: actions/checkout@v3
+      with: {submodules: true}
+    
+    - name: add msbuild to path
+      uses: microsoft/setup-msbuild@v1.1
+    
+    - name: prepare enviroment
+      run: |
+        Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+        $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+        $WorkLoads = '--add Microsoft.VisualStudio.Component.WinXP'
+        $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"", $WorkLoads, '--quiet', '--norestart', '--nocache')
+        $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+        if ($process.ExitCode -eq 0)
+        {
+            Write-Host "components have been successfully added"
+        }
+        else
+        {
+            Write-Host "components were not installed"
+            exit 1
+        }
+
+    - name: build target
+      run: |
+        msbuild -p ${{ matrix.project.targetname }}.vcxproj -p:configuration=release -p:Platform=x86
+        msbuild -p ${{ matrix.project.targetname }}.vcxproj -p:configuration=release -p:Platform=x64
+    
+    - name: upload release
+      uses: ncipollo/release-action@v1
+      if: github.event_name == 'push'
+      with:
+        artifacts: "build/${{ matrix.project.targetname }}32.${{ matrix.project.targetext }},build/${{ matrix.project.targetname }}64.${{ matrix.project.targetext }}"
+        allowUpdates: "true"
+        replacesArtifacts: "true"
+        token: ${{ secrets.GITHUB_TOKEN }}
