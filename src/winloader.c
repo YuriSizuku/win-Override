@@ -33,7 +33,6 @@ int main(int argc, char *argv[])
 		char *ext = strstr(argv[0], ".exe");
 		if (ext) end = (int)(ext - argv[0]);
 		while (end > 0 && argv[0][end] != '_') end--;
-		printf("%d\n", end);
 		strncpy(exepath, argv[0], end);
 		exepath[end] = '\0';
 		strcat(exepath, ".exe");
@@ -66,7 +65,6 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	printf("%x%x%x%x\n", exepath[0], exepath[1], exepath[2], exepath[3]);
 	printf("start exepath=%s, cmdstr=%s, dllpath=%s\n", exepath, cmdstr, dllpath);
 	DWORD pid = winhook_startexeinject(exepath, cmdstr, dllpath);
 	if (pid)

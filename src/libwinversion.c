@@ -1,6 +1,12 @@
 #include <windows.h>
 #include "winversion.h"
 
+#ifdef USECOMPAT
+#include "winversion_v0_1_1.h"
+#else
+#include "winversion.h"
+#endif
+
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
 {
     switch (ul_reason_for_call)

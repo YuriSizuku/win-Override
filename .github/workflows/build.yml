@@ -42,8 +42,8 @@ jobs:
 
     - name: build target
       run: |
-        msbuild -p ${{ matrix.project.targetname }}.vcxproj -p:configuration=release -p:Platform=x86
-        msbuild -p ${{ matrix.project.targetname }}.vcxproj -p:configuration=release -p:Platform=x64
+        msbuild ${{ matrix.project.targetname }}.vcxproj -p:configuration=release -p:Platform=x86
+        msbuild ${{ matrix.project.targetname }}.vcxproj -p:configuration=release -p:Platform=x64
     
     - name: upload release
       uses: ncipollo/release-action@v1
