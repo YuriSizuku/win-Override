@@ -10,7 +10,6 @@
 *.vcxproj.filter
 
 .vs
-.vscode
 __pycache__
 
 build/*

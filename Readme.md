@@ -5,8 +5,32 @@
 ☘️ Tools for windows game mod (localization) without cover origin file.  
 See also [psv-rePatch](https://github.com/YuriSizuku/psv-rePatch).  
 
-## Components  
+## components  
 
 `winloader.c`, win loader for loading dll into exe  
 `libwinversion.c`, single header file for windows version.dll proxy to patch.dll  
 `libwinoverride.c`, redirct files to "override" folder  
+
+## build
+
+### llvm-mingw
+
+```sh
+make winloader CC=i686-w64-mingw32-gcc WINDRES=i686-w64-mingw32-windres BUILD_TYPE=32d
+make winloader CC=x86_64-w64-mingw32-gcc WINDRES=x86_64-w64-mingw32-windres BUILD_TYPE=64d
+make libwinversion CC=i686-w64-mingw32-gcc BUILD_TYPE=32d 
+make libwinversion CC=x86_64-w64-mingw32-gcc BUILD_TYPE=64d
+make libwinoverride CC=i686-w64-mingw32-gcc BUILD_TYPE=32d 
+make libwinoverride CC=x86_64-w64-mingw32-gcc BUILD_TYPE=64d
+```
+
+### msvc
+
+``` sh
+msbuild winloader.vcxproj -p:configuration=release -p:Platform=x86
+msbuild winloader.vcxproj -p:configuration=release -p:Platform=x64
+msbuild libwinversion.vcxproj -p:configuration=release -p:Platform=x86
+msbuild libwinversion.vcxproj -p:configuration=release -p:Platform=x64
+msbuild libwinoverride.vcxproj -p:configuration=release -p:Platform=x86
+msbuild libwinoverride.vcxproj -p:configuration=release -p:Platform=x64
+```

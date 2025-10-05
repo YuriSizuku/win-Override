@@ -1,0 +1,68 @@
+{
+    "env": {
+        "llvmmingw" : "${env:LLVMMINGW_HOME}"
+    },
+    "configurations": [
+        {
+            "name": "win llvmmingw32",
+            "includePath": [
+                "${workspaceFolder}/depend/minhookstb/src",
+                "${workspaceFolder}/depend/winreverse/src",
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "WINDVFS_IMPLEMENTATION"
+            ],
+            "compilerPath": "${llvmmingw}/bin/clang.exe",
+            "cStandard": "c99",
+            "cppStandard": "c++11",
+            "intelliSenseMode": "windows-clang-x86"
+        },
+        {
+            "name": "win llvmmingw64",
+            "includePath": [
+                "${workspaceFolder}/depend/minhookstb/src",
+                "${workspaceFolder}/depend/winreverse/src",
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "WINDVFS_IMPLEMENTATION"
+            ],
+            "compilerPath": "${llvmmingw}/bin/clang.exe",
+            "cStandard": "c99",
+            "cppStandard": "c++11",
+            "intelliSenseMode": "windows-clang-x64"
+        },
+        {
+            "name": "linux mingw32",
+            "includePath": [
+                "${workspaceFolder}/depend/minhookstb/src",
+                "${workspaceFolder}/depend/winreverse/src",
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "WINDVFS_IMPLEMENTATION"
+            ],
+            "compilerPath": "/usr/bin/i686-w64-mingw32-gcc",
+            "cStandard": "c99",
+            "cppStandard": "c++11",
+            "intelliSenseMode": "linux-gcc-x86"
+        },
+        {
+            "name": "linux mingw64",
+            "includePath": [
+                "${workspaceFolder}/depend/minhookstb/src",
+                "${workspaceFolder}/depend/winreverse/src",
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "WINDVFS_IMPLEMENTATION"
+            ],
+            "compilerPath": "/usr/bin/x86_64-w64-mingw32-gcc",
+            "cStandard": "c99",
+            "cppStandard": "c++11",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}
