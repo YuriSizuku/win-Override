@@ -58,7 +58,7 @@ clean:
 prepare:
 	@if ! [ -d $(BUILD_DIR) ]; then mkdir -p $(BUILD_DIR); fi
 
-libwinversion: src/libwinversion.c depend/winreverse/src/winversion.def
+libwinversion: src/libwinversion.c src/winversion.def
 	@echo "## $@"
 	$(CC) $^ -shared -o $(BUILD_DIR)/$@$(BUILD_TYPE).dll \
 		$(INCS) $(LIBS) \

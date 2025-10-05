@@ -1,6 +1,6 @@
 #include <windows.h>
-#include "winversion.h"
 
+#define WINVERSION_IMPLEMENT
 #ifdef USECOMPAT
 #include "winversion_v0_1_1.h"
 #else
@@ -12,7 +12,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
     switch (ul_reason_for_call)
     {
     case DLL_PROCESS_ATTACH:
-		winversion_init();
+		winversion_install();
        	HMODULE hmod = LoadLibraryA("patch.dll");
 		if(!hmod) MessageBoxA(NULL, "can not load patch.dll", "dll error", 0);
         break;

@@ -41,7 +41,7 @@ clean:
 prepare:
 	@if ! [ -d $(BUILD_DIR) ]; then mkdir -p $(BUILD_DIR); fi
 
-libwinoverride: src/libwinoverride.c depend/winreverse/src/winversion.def
+libwinoverride: src/libwinoverride.c src/winversion.def
 	@echo "## $@"
 	$(CC) $^ -shared -o $(BUILD_DIR)/$@$(BUILD_TYPE).dll \
 		$(INCS) $(LIBS) \

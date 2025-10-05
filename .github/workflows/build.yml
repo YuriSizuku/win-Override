@@ -53,3 +53,30 @@ jobs:
         allowUpdates: "true"
         replacesArtifacts: "true"
         token: ${{ secrets.GITHUB_TOKEN }}
+
+  build_src:
+    runs-on: ubuntu-24.04
+    steps:
+    - name: pull and init
+      uses: actions/checkout@v3
+      with: {submodules: true}
+    - name: install depends
+      run: |
+        pip3 install lief keystone-engine
+
+    - name: build pysrc
+      run: |
+        chmod +x script/*.sh 
+        bash script/build_src.sh
+        cd build
+        archive_name=WinOverrideSrc_${{ github.ref_name }}
+        7z a ${archive_name}.7z src
+        7z rn ${archive_name}.7z src ${archive_name}
+
+    - name: create a release
+      uses: ncipollo/release-action@v1
+      if: github.event_name == 'push'
+      with:
+        artifacts: "build/*.7z"
+        allowUpdates: "true"
+        token: ${{ secrets.GITHUB_TOKEN }}

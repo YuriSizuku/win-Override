@@ -16,12 +16,12 @@ See also [psv-rePatch](https://github.com/YuriSizuku/psv-rePatch).
 ### llvm-mingw
 
 ```sh
-make winloader CC=i686-w64-mingw32-gcc WINDRES=i686-w64-mingw32-windres BUILD_TYPE=32d
-make winloader CC=x86_64-w64-mingw32-gcc WINDRES=x86_64-w64-mingw32-windres BUILD_TYPE=64d
-make libwinversion CC=i686-w64-mingw32-gcc BUILD_TYPE=32d 
-make libwinversion CC=x86_64-w64-mingw32-gcc BUILD_TYPE=64d
-make libwinoverride CC=i686-w64-mingw32-gcc BUILD_TYPE=32d 
-make libwinoverride CC=x86_64-w64-mingw32-gcc BUILD_TYPE=64d
+make -f winloader.mk CC=i686-w64-mingw32-gcc WINDRES=i686-w64-mingw32-windres BUILD_TYPE=32
+make -f winloader.mk CC=x86_64-w64-mingw32-gcc WINDRES=x86_64-w64-mingw32-windres BUILD_TYPE=64
+make -f libwinversion.mk CC=i686-w64-mingw32-gcc BUILD_TYPE=32
+make -f libwinversion.mk CC=x86_64-w64-mingw32-gcc BUILD_TYPE=64
+make -f libwinoverride.mk CC=i686-w64-mingw32-gcc BUILD_TYPE=32
+make -f libwinoverride.mk CC=x86_64-w64-mingw32-gcc BUILD_TYPE=64
 ```
 
 ### msvc
