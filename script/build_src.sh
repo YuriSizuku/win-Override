@@ -20,7 +20,8 @@ build_csrc()
     cp -f $src_dir/${module_name}.h $dst_dir/${module_name}_v${module_ver}.h
 }
 
-mkdir -p $ build/src
+mkdir -p build/src
+build_csrc depend/winreverse/src build/src commdef
 build_csrc src build/src winversion
 build_csrc src build/src winoverride
 cp -f src/winversion.def build/src/winversion.def

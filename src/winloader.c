@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
 	char dllpath[MAX_PATH] = {0};
 	char* cmdstr = NULL;
 
-	printf("winloader v0.2, developed by devseed\n"
+	printf("winloader v0.1.1, developed by devseed\n"
 		"usage:\n"
 		"winloader // if the name is xxx_yyy.exe, start xxx.exe\n"
 		"winloader exepath, cmdstr // will be null, dll has the same name as exe\n"

@@ -69,6 +69,21 @@ void winoverride_uninstall();
 #define STATUS_SUCCESS ((NTSTATUS)0x00000000)
 #endif
 
+#if defined (__TINYC__)
+typedef enum _OBJECT_INFORMATION_CLASS {
+    ObjectBasicInformation = 0,
+    ObjectTypeInformation = 2
+} OBJECT_INFORMATION_CLASS;
+#define FILE_DIRECTORY_FILE  0x00000001
+#define FILE_SUPERSEDED 0x00000000
+#define FILE_OPENED 0x00000001
+#define FILE_CREATED 0x00000002
+#define FILE_OVERWRITTEN 0x00000003
+#define FILE_EXISTS 0x00000004
+#define FILE_DOES_NOT_EXIST 0x00000005
+#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
+#endif
+
 #define MINHOOK_IMPLEMENTATION
 #define MINHOOK_STATIC
 #ifdef USECOMPAT
