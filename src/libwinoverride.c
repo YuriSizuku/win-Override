@@ -5,8 +5,8 @@
 
 #include <windows.h>
 
-#define WINVERSION_IMPLEMENT
-#define WINOVERRIDE_IMPLEMENT
+#define WINVERSION_IMPLEMENTATION
+#define WINOVERRIDE_IMPLEMENTATION
 #ifdef USECOMPAT
 #include "winversion_v0_1_1.h"
 #include "winoverride_v0_1.h"

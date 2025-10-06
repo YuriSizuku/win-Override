@@ -6,7 +6,7 @@
  *    wine might not be able to use
  * 
  *  macros:
- *    WINVERSION_IMPLEMENT, include implements of each function
+ *    WINVERSION_IMPLEMENTATION, include implements of each function
  *    WINVERSION_SHARED, make function export
  *    WINVERSION_STATIC, make function static
  * 
@@ -44,7 +44,7 @@ extern "C" {
 WINVERSION_API
 void winversion_install();
 
-#ifdef WINVERSION_IMPLEMENT
+#ifdef WINVERSION_IMPLEMENTATION
 // macro and global declear
 static HMODULE s_winversion = NULL;
 #if defined(_MSC_VER)

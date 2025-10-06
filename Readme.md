@@ -8,8 +8,22 @@ See also [psv-rePatch](https://github.com/YuriSizuku/psv-rePatch).
 ## components  
 
 `winloader.c`, win loader for loading dll into exe  
-`libwinversion.c`, single header file for windows version.dll proxy to patch.dll  
-`libwinoverride.c`, redirct files to "override" folder  
+`winversion.h`, single header file for windows version.dll proxy to patch.dll  
+`winoverride.h`, single header file for redircting files to "override" folder  
+
+## usage
+
+### winloader
+
+rename `winloader32.exe` or `winloader64.exe` to `xxx_yyy.exe`, and it will automaticly load `xxx.dll`
+
+### winversion  
+
+rename `libwinversion32.dll` or `libwinversion64.dll` to `version.dll`, and it will automaticly load `patch.dll`.  
+
+### winoverride
+
+load `libwinoverride32.dll` or `libwinoverride64.dll` into target exe either by `winloader` or `winoverride`, and it will automaticly redirect `${pwd}/xxx/yyy` to `${pwd}/override/xxx/yyy` if it exists.  
 
 ## build
 

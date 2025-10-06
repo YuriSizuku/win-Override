@@ -11,8 +11,8 @@
                 "${workspaceFolder}/**"
             ],
             "defines": [
-                "WINVERSION_IMPLEMENT", 
-                "WINOVERRIDE_IMPLEMENT" 
+                "WINVERSION_IMPLEMENTATION", 
+                "WINOVERRIDE_IMPLEMENTATION" 
             ],
             "compilerPath": "${llvmmingw}/bin/clang.exe",
             "cStandard": "c99",
@@ -27,8 +27,8 @@
                 "${workspaceFolder}/**"
             ],
             "defines": [
-                "WINVERSION_IMPLEMENT", 
-                "WINOVERRIDE_IMPLEMENT" 
+                "WINVERSION_IMPLEMENTATION", 
+                "WINOVERRIDE_IMPLEMENTATION" 
             ],
             "compilerPath": "${llvmmingw}/bin/clang.exe",
             "cStandard": "c99",
@@ -43,8 +43,8 @@
                 "${workspaceFolder}/**"
             ],
             "defines": [
-                "WINVERSION_IMPLEMENT", 
-                "WINOVERRIDE_IMPLEMENT" 
+                "WINVERSION_IMPLEMENTATION", 
+                "WINOVERRIDE_IMPLEMENTATION" 
             ],
             "compilerPath": "/usr/bin/i686-w64-mingw32-gcc",
             "cStandard": "c99",
@@ -59,8 +59,8 @@
                 "${workspaceFolder}/**"
             ],
             "defines": [
-                "WINVERSION_IMPLEMENT", 
-                "WINOVERRIDE_IMPLEMENT" 
+                "WINVERSION_IMPLEMENTATION", 
+                "WINOVERRIDE_IMPLEMENTATION" 
             ],
             "compilerPath": "/usr/bin/x86_64-w64-mingw32-gcc",
             "cStandard": "c99",

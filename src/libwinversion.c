@@ -1,6 +1,6 @@
 #include <windows.h>
 
-#define WINVERSION_IMPLEMENT
+#define WINVERSION_IMPLEMENTATION
 #ifdef USECOMPAT
 #include "winversion_v0_1_1.h"
 #else

@@ -3,7 +3,7 @@
  *   v0.1 developed by devseed
  * 
  * macros:
- *    WINOVERRIDE_IMPLEMENT, include implements of each function
+ *    WINOVERRIDE_IMPLEMENTATION, include implements of each function
  *    WINOVERRIDE_SHARED, make function export
  *    WINOVERRIDE_STATIC, make function static
  *    WINOVERRIDE_REDIRECTDIRW, redirect dir
@@ -51,7 +51,7 @@ void winoverride_install();
 WINOVERRIDE_API
 void winoverride_uninstall();
 
-#ifdef WINOVERRIDE_IMPLEMENT
+#ifdef WINOVERRIDE_IMPLEMENTATION
 #include <windows.h>
 
 #if defined(_MSC_VER) || defined(__TINYC__)
@@ -72,10 +72,10 @@ void winoverride_uninstall();
 #define MINHOOK_IMPLEMENTATION
 #define MINHOOK_STATIC
 #ifdef USECOMPAT
-#include "winversion_v0_1_1.h"
+#include "commdef_v0_1_1.h"
 #include "stb_minhook_v1_3_3_2.h"
 #else
-#include "winversion.h"
+#include "commdef.h"
 #include "stb_minhook.h"
 #endif
 
