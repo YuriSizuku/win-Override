@@ -18,6 +18,7 @@ extern "C" {
 
 #define WINOVERRIDE_VERSION "0.1.3"
 
+#include "stdbool.h"
 #ifdef USECOMPAT
 #include "commdef_v0_1_1.h"
 #else
@@ -43,13 +44,10 @@ WINOVERRIDE_API
 size_t winoverride_relpathw(const wchar_t *srcpath, const wchar_t *basepath, wchar_t *relpath);
 
 WINOVERRIDE_API
-void winoverride_banner();
+void winoverride_install(bool init_minhook);
 
 WINOVERRIDE_API
-void winoverride_install();
-
-WINOVERRIDE_API
-void winoverride_uninstall();
+void winoverride_uninstall(bool unint_minhook);
 
 #ifdef WINOVERRIDE_IMPLEMENTATION
 #include <windows.h>
@@ -266,7 +264,8 @@ typedef struct _FILE_NETWORK_OPEN_INFORMATION {
     void *name##_old; \
     HANDLE name##_mutex = NULL;
 
-#define WINOVERRIDE_BINDHOOK(name) \
+#define WINOVERRIDE_BINDHOOK(dll, name) \
+    name##_old = (t##name)GetProcAddress(dll, #name); \
     if(name##_old) { \
         MH_CreateHook(name##_old, (LPVOID)(name##_hook), (LPVOID*)(&name##_org)); \
         LOGi("WINOVERRIDE_BINDHOOK " #name " %p -> %p\n", name##_old, name##_hook); \
@@ -276,10 +275,16 @@ typedef struct _FILE_NETWORK_OPEN_INFORMATION {
 
 #define WINOVERRIDE_UNBINDHOOK(name) \
     if(name##_old) {\
-        MH_DisableHook(name##_old); \
+        MH_RemoveHook(name##_old); \
         CloseHandle(name##_mutex); \
         LOGi("WINOVERRIDE_UNBINDHOOK " #name " %p\n", name##_old); \
     }
+
+#define WINOVERRIDE_ENABLEHOOK(name) \
+    MH_EnableHook(name##_old);
+
+#define WINOVERRIDE_DISABLEHOOK(name) \
+    MH_DisableHook(name##_old);
 
 #define WINOVERRIDE_ENTERHOOK(name) \
     WaitForSingleObject(name##_mutex, INFINITE); \
@@ -727,10 +732,9 @@ static NTSTATUS NTAPI NtQueryDirectoryFileEx_hook(
     return status;
 }
 
-void winoverride_banner()
+void winoverride_install(bool init_minhook)
 {
-    LOGi("winoverride v0.1.3, developed by devseed\n");
-    
+    LOGi("winoverride v%s, developed by devseed\n", WINOVERRIDE_VERSION);
     DWORD winver = GetVersion();
     DWORD winver_major = (DWORD)(LOBYTE(LOWORD(winver)));
     DWORD winver_minor = (DWORD)(HIBYTE(LOWORD(winver)));
@@ -742,55 +746,50 @@ void winoverride_banner()
     #elif defined(__TINYC__)
     LOGi("compiler TCC\n");
     #endif
-}
 
-void winoverride_install()
-{
-    FILE *fp = fopen("DEBUG_CONSOLE", "rb");
-    if(fp)
+    if(init_minhook)
     {
-        AllocConsole();
-        freopen("CONOUT$", "w", stdout);
-        system("pause");
-        fclose(fp);
-    }
-
-    MH_STATUS status = MH_Initialize();
-    if(status != MH_OK)
-    {
-        LOGe("MH_Initialize failed with %s\n", MH_StatusToString(status));
+        MH_STATUS status = MH_Initialize();
+        if(status != MH_OK)
+        {
+            LOGe("MH_Initialize failed with %s\n", MH_StatusToString(status));
+        }
     }
 
     HMODULE ntdll = GetModuleHandle("ntdll.dll");
-    NtCreateFile_old = GetProcAddress(ntdll, "NtCreateFile");
-    WINOVERRIDE_BINDHOOK(NtCreateFile);
-    NtOpenFile_old = GetProcAddress(ntdll, "NtOpenFile");
-    WINOVERRIDE_BINDHOOK(NtOpenFile);
-    NtCreateSection_old = GetProcAddress(ntdll, "NtCreateSection");
-    WINOVERRIDE_BINDHOOK(NtCreateSection);
-    NtCreateSectionEx_old = GetProcAddress(ntdll, "NtCreateSectionEx");
-    WINOVERRIDE_BINDHOOK(NtCreateSectionEx);
-    NtQueryAttributesFile_old = GetProcAddress(ntdll, "NtQueryAttributesFile");
-    WINOVERRIDE_BINDHOOK(NtQueryAttributesFile);
-    NtQueryFullAttributesFile_old = GetProcAddress(ntdll, "NtQueryFullAttributesFile");
-    WINOVERRIDE_BINDHOOK(NtQueryFullAttributesFile);
-    NtQueryInformationFile_old = GetProcAddress(ntdll, "NtQueryInformationFile");
-    WINOVERRIDE_BINDHOOK(NtQueryInformationFile);
-    NtQueryDirectoryFile_old = GetProcAddress(ntdll, "NtQueryDirectoryFile");
-    WINOVERRIDE_BINDHOOK(NtQueryDirectoryFile);
-    NtQueryDirectoryFileEx_old = GetProcAddress(ntdll, "NtQueryDirectoryFileEx");
-    WINOVERRIDE_BINDHOOK(NtQueryDirectoryFileEx);
+    WINOVERRIDE_BINDHOOK(ntdll, NtCreateFile);
+    WINOVERRIDE_BINDHOOK(ntdll, NtOpenFile);
+    WINOVERRIDE_BINDHOOK(ntdll, NtCreateSection);
+    WINOVERRIDE_BINDHOOK(ntdll, NtCreateSectionEx);
+    WINOVERRIDE_BINDHOOK(ntdll, NtQueryAttributesFile);
+    WINOVERRIDE_BINDHOOK(ntdll, NtQueryFullAttributesFile);
+    WINOVERRIDE_BINDHOOK(ntdll, NtQueryInformationFile);
+    WINOVERRIDE_BINDHOOK(ntdll, NtQueryDirectoryFile);
+    WINOVERRIDE_BINDHOOK(ntdll, NtQueryDirectoryFileEx);
 }
 
-void winoverride_uninstall()
+void winoverride_uninstall(bool uninit_minhook)
 {
+    WINOVERRIDE_UNBINDHOOK(NtCreateFile);
+    WINOVERRIDE_UNBINDHOOK(NtOpenFile);
+    WINOVERRIDE_UNBINDHOOK(NtCreateSection);
+    WINOVERRIDE_UNBINDHOOK(NtCreateSectionEx);
+    WINOVERRIDE_UNBINDHOOK(NtQueryAttributesFile);
+    WINOVERRIDE_UNBINDHOOK(NtQueryFullAttributesFile);
+    WINOVERRIDE_UNBINDHOOK(NtQueryInformationFile);
+    WINOVERRIDE_UNBINDHOOK(NtQueryDirectoryFile);
+    WINOVERRIDE_UNBINDHOOK(NtQueryDirectoryFileEx);
 
-    MH_STATUS status = MH_Uninitialize();
-    if(status != MH_OK)
+    if(uninit_minhook)
     {
-        LOGe("MH_Initialize failed with %s\n", MH_StatusToString(status));
+        MH_STATUS status = MH_Uninitialize();
+        if(status != MH_OK)
+        {
+            LOGe("MH_Initialize failed with %s\n", MH_StatusToString(status));
+        }
     }
 }
+
 #endif
 #ifdef __cplusplus
 }

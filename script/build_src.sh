@@ -14,7 +14,7 @@ build_csrc()
     src_dir=$1
     dst_dir=$2
     module_name=$3
-    module_ver=$(awk '/.*_VERSION/ {print $3}' $src_dir/$module_name.h | sed 's/"//g')
+    module_ver=$(awk '/define.*_VERSION/ {print $3}' $src_dir/$module_name.h | sed 's/"//g')
     module_ver=$(echo $module_ver | sed -E 's/\./_/g')
     echo build ${module_name}_v${module_ver}.h
     cp -f $src_dir/${module_name}.h $dst_dir/${module_name}_v${module_ver}.h

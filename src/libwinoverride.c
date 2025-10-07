@@ -17,19 +17,27 @@
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
 {
+    FILE *fp = NULL;
     switch (ul_reason_for_call)
     {
     case DLL_PROCESS_ATTACH:
+        fp = fopen("DEBUG_CONSOLE", "rb");
+        if(fp)
+        {
+            AllocConsole();
+            freopen("CONOUT$", "w", stdout);
+            system("pause");
+            fclose(fp);
+        }
         winversion_install();
-        winoverride_install();
-        winoverride_banner();
+        winoverride_install(true);
         break;
     case DLL_THREAD_ATTACH:
         break;
     case DLL_THREAD_DETACH:
         break;
     case DLL_PROCESS_DETACH:
-        winoverride_uninstall();
+        winoverride_uninstall(true);
         break;
     }
     return TRUE;
