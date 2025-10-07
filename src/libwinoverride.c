@@ -9,7 +9,7 @@
 #define WINOVERRIDE_IMPLEMENTATION
 #ifdef USECOMPAT
 #include "winversion_v0_1_1.h"
-#include "winoverride_v0_1.h"
+#include "winoverride_v0_1_3.h"
 #else
 #include "winversion.h"
 #include "winoverride.h"

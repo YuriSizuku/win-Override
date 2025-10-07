@@ -16,8 +16,7 @@ CFLAGS:=-fPIC -std=c99 \
 LDFLAGS:=-Wl,--enable-stdcall-fixup \
 		 -Wl,--kill-at \
 		 -Wl,--gc-sections \
-		 -D_WIN32_WINNT=0X0400 \
-		 -Wl,--subsystem,console:4.0 # compatible for xp
+		 -D_WIN32_WINNT=0X0400
 
 # build config
 ifneq (,$(findstring 64, $(BUILD_TYPE)))
@@ -29,8 +28,10 @@ ARCH_WINDRES=pe-i386
 endif
 ifneq (,$(findstring d, $(BUILD_TYPE)))
 CFLAGS+=-g -D_DEBUG
+LDFLAGS+=-Wl,--subsystem,console:4.0 # compatible for xp
 else
 CFLAGS+=-Os
+LDFLAGS+=-Wl,--subsystem,windows:4.0 # compatible for xp
 endif
 ifneq (,$(findstring tcc, $(CC)))
 LDFLAGS= # tcc can not remove at at stdcall in i686

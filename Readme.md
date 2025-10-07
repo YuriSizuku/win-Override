@@ -48,3 +48,8 @@ msbuild libwinversion.vcxproj -p:configuration=release -p:Platform=x64
 msbuild libwinoverride.vcxproj -p:configuration=release -p:Platform=x86
 msbuild libwinoverride.vcxproj -p:configuration=release -p:Platform=x64
 ```
+
+## issues (including solved)
+
+- [x] unity resources.assets can not be redirect if larger than original file
+      caused by `NtQueryFullAttributesFile`
