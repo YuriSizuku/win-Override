@@ -1,6 +1,6 @@
 /**
  * single header file file repatch tool
- *   v0.1.4 developed by devseed
+ *   v0.1.5 developed by devseed
  * 
  * macros:
  *    WINOVERRIDE_IMPLEMENTATION, include implements of each function
@@ -16,9 +16,9 @@
 extern "C" {
 #endif
 
-#define WINOVERRIDE_FILE_VERSION "0.1.4"
+#define WINOVERRIDE_FILE_VERSION "0.1.5"
 
-#include "stdbool.h"
+#include <stdbool.h>
 #ifdef USECOMPAT
 #include "commdef_v0_1_1.h"
 #else
@@ -69,8 +69,12 @@ void winoverride_uninstall(bool unint_minhook);
 
 struct winoverride_cfg_t
 {
-    bool override_file;
-    bool override_font;
+    bool override_file; // enable redirect file
+    wchar_t redirectdir[MAX_PATH];
+    bool override_codepage; // enable redirect codepage
+    int codepage;
+    bool forcecodepage;  // force redirect all codepage
+    bool override_font; // enable redirect font
     int charset;
     wchar_t fontname[32];
     wchar_t fontpath[MAX_PATH];
@@ -78,9 +82,9 @@ struct winoverride_cfg_t
 };
 
 static struct winoverride_cfg_t  g_winoverride_cfg = {
-    .override_file = true,
-    .override_font=true,
-    .charset = 0, .fontname = {L"\0"}, .fontpath = {L"\0"},
+    .override_file = true, .redirectdir = WINOVERRIDE_REDIRECTDIRW,
+    .override_codepage = false, .codepage = 0, .forcecodepage = false,
+    .override_font = true, .charset = 0, .fontname = {L"\0"}, .fontpath = {L"\0"},
     .patch = {L"\0"}
 };
 
@@ -413,10 +417,14 @@ static BOOL _redirect_path(const POBJECT_ATTRIBUTES ObjectAttributes, wchar_t *r
         if (wcsstr(ObjectAttributes->ObjectName->Buffer, L"\\??\\"))
         {
             wcscpy(target, L"\\??\\");
-            wcscat(target, cwd);
-            wcscat(target, L"\\");
+            if(!wcsstr(g_winoverride_cfg.redirectdir, L":"))
+            {
+                wcscat(target, cwd);
+                wcscat(target, L"\\");
+            }
         }
-        wcscat(target, WINOVERRIDE_REDIRECTDIRW L"\\");
+        wcscat(target, g_winoverride_cfg.redirectdir);
+        wcscat(target, L"\\");
         wcscat(target, rel);
         return TRUE;
     }
@@ -761,7 +769,7 @@ static void winoverride_readcfg(const char *cfgpath)
 {
     struct winoverride_cfg_t *cfg = &g_winoverride_cfg;
     FILE *fp = fopen(cfgpath, "rb");
-    if(!fp)
+    if (!fp)
     {
         LOGw("can not find %s", cfgpath);
         return;
@@ -770,40 +778,31 @@ static void winoverride_readcfg(const char *cfgpath)
     wchar_t line[1024] = {0};
     wchar_t *k = NULL;
     wchar_t *v = NULL;
-
     fread(line, 2, 1, fp); // skip bom
     if(line[0] != 0xfeff) fseek(fp, 0, SEEK_SET);
 
-    while(fgetws(line, sizeof(line)/2, fp))
+#define LOAD_CFG_INT(name) \
+    if (!_wcsicmp(k, L"" #name)) cfg->name = _wtoi(v);
+#define LOAD_CFG_STR(name) \
+    if (!_wcsicmp(k, L"" #name)) wcscpy(cfg->name, v);
+    while (fgetws(line, sizeof(line)/2, fp))
     {
         k = wcstok(line, L"=\n");
         v = wcstok(NULL, L"=\n");
         LOGLi(L"read config %ls=%ls\n", k, v);
-        if(!_wcsicmp(k, L"override_file"))
-        {
-            cfg->override_file = _wtoi(v);
-        }
-        else if(!_wcsicmp(k, L"override_font"))
-        {
-            cfg->override_font = _wtoi(v);
-        }
-        else if(!_wcsicmp(k, L"charset"))
-        {
-            cfg->charset = _wtoi(v);
-        }
-        else if(!_wcsicmp(k, L"fontname"))
-        {
-            wcscpy(cfg->fontname, v);
-        }
-        else if(!_wcsicmp(k, L"fontpath"))
-        {
-            wcscpy(cfg->fontpath, v);
-        }
-        else if(!_wcsicmp(k, L"patch"))
-        {
-            wcscpy(cfg->patch, v);
-        }
+        LOAD_CFG_INT(override_file);
+        LOAD_CFG_STR(redirectdir);
+        LOAD_CFG_INT(override_codepage);
+        LOAD_CFG_INT(codepage);
+        LOAD_CFG_INT(forcecodepage);
+        LOAD_CFG_INT(override_font);
+        LOAD_CFG_INT(charset);
+        LOAD_CFG_STR(fontname);
+        LOAD_CFG_STR(fontpath)
+        LOAD_CFG_STR(patch);
     }
+#undef LOAD_CFG_INT
+#undef LOAD_CFG_STR
     fclose(fp);
 }
 
@@ -822,18 +821,18 @@ void winoverride_install(bool init_minhook, const char *cfgpath)
     LOGi("compiler TCC\n");
     #endif
 
-    if(init_minhook)
+    if (init_minhook)
     {
         MH_STATUS status = MH_Initialize();
-        if(status != MH_OK)
+        if (status != MH_OK)
         {
             LOGe("MH_Initialize failed with %s\n", MH_StatusToString(status));
         }
     }
 
-    if(cfgpath) winoverride_readcfg(cfgpath);
+    if (cfgpath) winoverride_readcfg(cfgpath);
 
-    if(g_winoverride_cfg.override_file)
+    if (g_winoverride_cfg.override_file)
     {
         HMODULE ntdll = GetModuleHandle("ntdll.dll");
         WINOVERRIDE_BINDHOOK(ntdll, NtCreateFile);
@@ -847,7 +846,12 @@ void winoverride_install(bool init_minhook, const char *cfgpath)
         WINOVERRIDE_BINDHOOK(ntdll, NtQueryDirectoryFileEx);
     }
 
-    if(g_winoverride_cfg.override_font)
+    if (g_winoverride_cfg.override_codepage)
+    {
+
+    }
+
+    if (g_winoverride_cfg.override_font)
     {
 
     }
@@ -855,7 +859,7 @@ void winoverride_install(bool init_minhook, const char *cfgpath)
 
 void winoverride_uninstall(bool uninit_minhook)
 {
-    if(g_winoverride_cfg.override_file)
+    if (g_winoverride_cfg.override_file)
     {
         WINOVERRIDE_UNBINDHOOK(NtCreateFile);
         WINOVERRIDE_UNBINDHOOK(NtOpenFile);
@@ -868,12 +872,17 @@ void winoverride_uninstall(bool uninit_minhook)
         WINOVERRIDE_UNBINDHOOK(NtQueryDirectoryFileEx);
     }
 
-    if(g_winoverride_cfg.override_font)
+    if (g_winoverride_cfg.override_codepage)
     {
 
     }
 
-    if(uninit_minhook)
+    if (g_winoverride_cfg.override_font)
+    {
+
+    }
+
+    if (uninit_minhook)
     {
         MH_STATUS status = MH_Uninitialize();
         if(status != MH_OK)
@@ -891,11 +900,12 @@ void winoverride_uninstall(bool uninit_minhook)
 
 /**
  * history:
- *   v0.1, initial version
- *   v0.1.1, seperate to single header file
- *   v0.1.2, add NtOpenFile, relpathw string length check
- *   v0.1.3, add NtCreateSection, NtCreateSectionEx,
- *          NtQueryAttributesFile, NtQueryFullAttributesFile,
- *          NtQueryInformationFile, NtQueryDirectoryFile
- *   v0.1.4, add config file, redirect without directory
+ * v0.1, initial version
+ * v0.1.1, seperate to single header file
+ * v0.1.2, add NtOpenFile, relpathw string length check
+ * v0.1.3, add NtCreateSection, NtCreateSectionEx,
+ *         NtQueryAttributesFile, NtQueryFullAttributesFile,
+ *         NtQueryInformationFile, NtQueryDirectoryFile
+ * v0.1.4, add config file, redirect without directory
+ * v0.1.5, add redirectdir in config file
  */

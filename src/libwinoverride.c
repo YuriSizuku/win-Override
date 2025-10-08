@@ -7,13 +7,8 @@
 
 #define WINVERSION_IMPLEMENTATION
 #define WINOVERRIDE_IMPLEMENTATION
-#ifdef USECOMPAT
-#include "winversion_v0_1_1.h"
-#include "winoverride_v0_1_4.h"
-#else
 #include "winversion.h"
 #include "winoverride.h"
-#endif
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
 {
