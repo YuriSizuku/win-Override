@@ -2,7 +2,7 @@
 
 ![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/yurisizuku/win-Override?color=green&label=Override)![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/YuriSizuku/win-Override/build.yml?label=build)  
 
-☘️ Tools for windows game mod (localization) without cover origin file.  
+☘️ Tools for windows game mod (localization) without covering origin files.  
 See also [psv-rePatch](https://github.com/YuriSizuku/psv-rePatch).  
 
 ## components  

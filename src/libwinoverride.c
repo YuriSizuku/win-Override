@@ -9,7 +9,7 @@
 #define WINOVERRIDE_IMPLEMENTATION
 #ifdef USECOMPAT
 #include "winversion_v0_1_1.h"
-#include "winoverride_v0_1_3.h"
+#include "winoverride_v0_1_4.h"
 #else
 #include "winversion.h"
 #include "winoverride.h"
@@ -30,7 +30,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
             fclose(fp);
         }
         winversion_install();
-        winoverride_install(true);
+        winoverride_install(true, "override\\winoverride.ini");
         break;
     case DLL_THREAD_ATTACH:
         break;
