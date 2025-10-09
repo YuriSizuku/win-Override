@@ -1,8 +1,3 @@
-/**
- * redirct files to "override" folder
- *   v0.1 developed by devseed
-*/
-
 #include <windows.h>
 
 #define WINVERSION_IMPLEMENTATION
@@ -10,6 +5,7 @@
 #include "winversion.h"
 #include "winoverride.h"
 
+// in win11, build from visual studio might failed, need to copy ucrtbased.dll
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
 {
     FILE *fp = NULL;

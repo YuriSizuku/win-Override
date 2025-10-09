@@ -2,8 +2,12 @@
 
 ![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/yurisizuku/win-Override?color=green&label=Override)![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/YuriSizuku/win-Override/build.yml?label=build)  
 
-☘️ Tools for windows game mod (localization) without covering origin files.  
-See also [psv-rePatch](https://github.com/YuriSizuku/psv-rePatch).  
+☘️ Lightweight and flexible tools for windows game mod (localization).
+
+- override files, See also [psv-rePatch](https://github.com/YuriSizuku/psv-rePatch).  
+- override codepage
+- override fonts
+- apply patches and load dll
 
 ## components  
 
@@ -24,6 +28,29 @@ rename `libwinversion32.dll` or `libwinversion64.dll` to `version.dll`, and it w
 ### winoverride
 
 load `libwinoverride32.dll` or `libwinoverride64.dll` into target exe either by `winloader` or `winoverride`, and it will automaticly redirect `${pwd}/xxx/yyy` to `${pwd}/override/xxx/yyy` if it exists.  
+
+Also these options can be modified in `override/winoverride.ini` and this file should be encoded in `utf16le`.  
+
+```ini
+# enable override files
+override_file=1
+redirectdir=override
+
+# enable override codepage, or force override all codepage
+override_codepage=0
+codepage=0
+forcecodepage=0
+
+# enable override font, GB2312_CHARSET 134, SHIFTJIS_CHARSET 128
+override_font=0
+charset=0
+fontname=simhei
+fontpath=C:\Windows\Fonts\simhei.ttf
+
+# apply patches on exe and load another dll into exe
+patch=+rva1:xx;va:yy1 yy2
+dllpath=xxx.dll
+```
 
 ## build
 

@@ -1,6 +1,6 @@
 /**
  * single header file file repatch tool
- *   v0.1.5 developed by devseed
+ *   v0.1.6 developed by devseed
  * 
  * macros:
  *    WINOVERRIDE_IMPLEMENTATION, include implements of each function
@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-#define WINOVERRIDE_FILE_VERSION "0.1.5"
+#define WINOVERRIDE_FILE_VERSION "0.1.6"
 
 #include <stdbool.h>
 #ifdef USECOMPAT
@@ -44,6 +44,9 @@ WINOVERRIDE_API
 size_t winoverride_relpathw(const wchar_t *srcpath, const wchar_t *basepath, wchar_t *relpath);
 
 WINOVERRIDE_API
+int winoverride_patchpatternw(wchar_t *pattern);
+
+WINOVERRIDE_API
 void winoverride_install(bool init_minhook, const char *cfgpath);
 
 WINOVERRIDE_API
@@ -58,7 +61,7 @@ void winoverride_uninstall(bool unint_minhook);
 #endif
 
 #ifdef USECOMPAT
-#include "stb_minhook_v1_3_3_2.h"
+#include "stb_minhook_v1_3_4.h"
 #else
 #include "stb_minhook.h"
 #endif
@@ -69,58 +72,25 @@ void winoverride_uninstall(bool unint_minhook);
 
 struct winoverride_cfg_t
 {
-    bool override_file; // enable redirect file
+    bool override_file; // enable override file
     wchar_t redirectdir[MAX_PATH];
-    bool override_codepage; // enable redirect codepage
+    bool override_codepage; // enable override codepage
     int codepage;
-    bool forcecodepage;  // force redirect all codepage
-    bool override_font; // enable redirect font
+    bool forcecodepage;  // force override all codepage
+    bool override_font; // enable override font
     int charset;
     wchar_t fontname[32];
     wchar_t fontpath[MAX_PATH];
     wchar_t patch[1024];
+    wchar_t dllpath[MAX_PATH];
 };
 
 static struct winoverride_cfg_t  g_winoverride_cfg = {
     .override_file = true, .redirectdir = WINOVERRIDE_REDIRECTDIRW,
     .override_codepage = false, .codepage = 0, .forcecodepage = false,
     .override_font = true, .charset = 0, .fontname = {L"\0"}, .fontpath = {L"\0"},
-    .patch = {L"\0"}
+    .patch = {L"\0"}, .dllpath = {L"\0"}
 };
-
-#define WINOVERRIDE_DEFINEHOOK(name) \
-    t##name name##_org = NULL; \
-    void *name##_old; \
-    HANDLE name##_mutex = NULL;
-
-#define WINOVERRIDE_BINDHOOK(dll, name) \
-    name##_old = (t##name)GetProcAddress(dll, #name); \
-    if(name##_old) { \
-        MH_CreateHook(name##_old, (LPVOID)(name##_hook), (LPVOID*)(&name##_org)); \
-        LOGi("WINOVERRIDE_BINDHOOK " #name " %p -> %p\n", name##_old, name##_hook); \
-        MH_EnableHook(name##_old); \
-        name##_mutex = CreateMutex(NULL, FALSE, NULL); \
-    }
-
-#define WINOVERRIDE_UNBINDHOOK(name) \
-    if(name##_old) {\
-        MH_RemoveHook(name##_old); \
-        CloseHandle(name##_mutex); \
-        LOGi("WINOVERRIDE_UNBINDHOOK " #name " %p\n", name##_old); \
-    }
-
-#define WINOVERRIDE_ENABLEHOOK(name) \
-    MH_EnableHook(name##_old);
-
-#define WINOVERRIDE_DISABLEHOOK(name) \
-    MH_DisableHook(name##_old);
-
-#define WINOVERRIDE_ENTERHOOK(name) \
-    WaitForSingleObject(name##_mutex, INFINITE); \
-    t##name pfn = name##_org;
-
-#define WINOVERRIDE_LEAVEHOOK(name) \
-    ReleaseMutex(name##_mutex);
 
 #if 1 // winoverride_file
 #if defined(_MSC_VER) || defined(__TINYC__)
@@ -316,7 +286,7 @@ typedef struct _FILE_NETWORK_OPEN_INFORMATION {
 } FILE_NETWORK_OPEN_INFORMATION, * PFILE_NETWORK_OPEN_INFORMATION;
 #endif
 
-typedef NTSTATUS (NTAPI *tNtCreateFile)(
+typedef NTSTATUS (NTAPI *T_NtCreateFile)(
     OUT PHANDLE FileHandle,
     IN ACCESS_MASK DesiredAccess,
     IN POBJECT_ATTRIBUTES ObjectAttributes,
@@ -329,7 +299,7 @@ typedef NTSTATUS (NTAPI *tNtCreateFile)(
     IN OPTIONAL PVOID EaBuffer,
     IN ULONG EaLength);
 
-typedef NTSTATUS (NTAPI *tNtOpenFile)(
+typedef NTSTATUS (NTAPI *T_NtOpenFile)(
     OUT PHANDLE FileHandle,
     IN ACCESS_MASK DesiredAccess,
     IN POBJECT_ATTRIBUTES ObjectAttributes,
@@ -337,7 +307,7 @@ typedef NTSTATUS (NTAPI *tNtOpenFile)(
     IN ULONG ShareAccess,
     IN ULONG OpenOptions);
 
-typedef NTSTATUS(NTAPI* tNtCreateSection)(
+typedef NTSTATUS(NTAPI* T_NtCreateSection)(
     OUT PHANDLE SectionHandle,
     IN ACCESS_MASK DesiredAccess,
     IN OPTIONAL POBJECT_ATTRIBUTES ObjectAttributes,
@@ -346,7 +316,7 @@ typedef NTSTATUS(NTAPI* tNtCreateSection)(
     IN ULONG AllocationAttributes,
     IN OPTIONAL HANDLE FileHandle);
 
-typedef NTSTATUS(NTAPI* tNtCreateSectionEx)(
+typedef NTSTATUS(NTAPI* T_NtCreateSectionEx)(
     OUT PHANDLE SectionHandle,
     IN ACCESS_MASK DesiredAccess,
     IN OPTIONAL POBJECT_ATTRIBUTES ObjectAttributes,
@@ -357,22 +327,22 @@ typedef NTSTATUS(NTAPI* tNtCreateSectionEx)(
     IN OUT PVOID ExtendedParameters,
     ULONG ExtendedParameterCount);
 
-typedef NTSTATUS(NTAPI* tNtQueryAttributesFile)(
+typedef NTSTATUS(NTAPI* T_NtQueryAttributesFile)(
     IN POBJECT_ATTRIBUTES   ObjectAttributes,
     OUT PFILE_BASIC_INFORMATION FileAttributes);
 
-typedef NTSTATUS(NTAPI* tNtQueryFullAttributesFile)(
+typedef NTSTATUS(NTAPI* T_NtQueryFullAttributesFile)(
     IN POBJECT_ATTRIBUTES   ObjectAttributes,
     OUT PFILE_NETWORK_OPEN_INFORMATION  FileInformation);
 
-typedef NTSTATUS(NTAPI* tNtQueryInformationFile)(
+typedef NTSTATUS(NTAPI* T_NtQueryInformationFile)(
     IN HANDLE FileHandle,
     OUT PIO_STATUS_BLOCK IoStatusBlock,
     OUT PVOID FileInformation,
     IN ULONG Length,
     IN FILE_INFORMATION_CLASS FileInformationClass);
 
-typedef NTSTATUS(NTAPI* tNtQueryDirectoryFile)(
+typedef NTSTATUS(NTAPI* T_NtQueryDirectoryFile)(
     IN HANDLE FileHandle,
     IN OPTIONAL HANDLE Event,
     IN OPTIONAL PIO_APC_ROUTINE ApcRoutine,
@@ -385,7 +355,7 @@ typedef NTSTATUS(NTAPI* tNtQueryDirectoryFile)(
     IN OPTIONAL PUNICODE_STRING FileName,
     IN BOOLEAN RestartScan);
 
-typedef NTSTATUS(NTAPI* tNtQueryDirectoryFileEx)(
+typedef NTSTATUS(NTAPI* T_NtQueryDirectoryFileEx)(
     IN HANDLE FileHandle,
     IN HANDLE Event,
     IN OPTIONAL PIO_APC_ROUTINE ApcRoutine,
@@ -397,15 +367,15 @@ typedef NTSTATUS(NTAPI* tNtQueryDirectoryFileEx)(
     IN ULONG QueryFlags,
     IN OPTIONAL PUNICODE_STRING FileName);
 
-WINOVERRIDE_DEFINEHOOK(NtCreateFile);
-WINOVERRIDE_DEFINEHOOK(NtOpenFile);
-WINOVERRIDE_DEFINEHOOK(NtCreateSection);
-WINOVERRIDE_DEFINEHOOK(NtCreateSectionEx);
-WINOVERRIDE_DEFINEHOOK(NtQueryAttributesFile);
-WINOVERRIDE_DEFINEHOOK(NtQueryFullAttributesFile);
-WINOVERRIDE_DEFINEHOOK(NtQueryInformationFile);
-WINOVERRIDE_DEFINEHOOK(NtQueryDirectoryFile);
-WINOVERRIDE_DEFINEHOOK(NtQueryDirectoryFileEx);
+MINHOOK_DEFINE(NtCreateFile);
+MINHOOK_DEFINE(NtOpenFile);
+MINHOOK_DEFINE(NtCreateSection);
+MINHOOK_DEFINE(NtCreateSectionEx);
+MINHOOK_DEFINE(NtQueryAttributesFile);
+MINHOOK_DEFINE(NtQueryFullAttributesFile);
+MINHOOK_DEFINE(NtQueryInformationFile);
+MINHOOK_DEFINE(NtQueryDirectoryFile);
+MINHOOK_DEFINE(NtQueryDirectoryFileEx);
 
 static BOOL _redirect_path(const POBJECT_ATTRIBUTES ObjectAttributes, wchar_t *rel, wchar_t *target)
 {
@@ -527,7 +497,7 @@ static NTSTATUS NTAPI NtCreateFile_hook(
     IN OPTIONAL PVOID EaBuffer,
     IN ULONG EaLength)
 {
-    WINOVERRIDE_ENTERHOOK(NtCreateFile);
+    MINHOOK_ENTERFUNC(NtCreateFile);
     NTSTATUS status = -1;
     BOOL flag_redirect = FALSE;
     wchar_t rel[MAX_PATH] = { 0 }, target[MAX_PATH] = { 0 };
@@ -566,7 +536,7 @@ NtCreateFile_hook_end:
         if(rel[0]) LOGLi(L"FILE %ls %ld\n", rel, status);
     }
 
-    WINOVERRIDE_LEAVEHOOK(NtCreateFile);
+    MINHOOK_LEAVEFUNC(NtCreateFile);
     return status;
 }
 
@@ -578,7 +548,7 @@ static NTSTATUS NTAPI NtOpenFile_hook(
     IN ULONG ShareAccess,
     IN ULONG OpenOptions)
 {
-    WINOVERRIDE_ENTERHOOK(NtOpenFile);
+    MINHOOK_ENTERFUNC(NtOpenFile);
     NTSTATUS status = -1;
     BOOL flag_redirect = FALSE;
     wchar_t rel[MAX_PATH] = { 0 }, target[MAX_PATH] = { 0 };
@@ -608,7 +578,7 @@ NtOpenFile_hook_end:
         if (rel[0]) LOGLi(L"FILE %ls %ld\n", rel, status);
     }
 
-    WINOVERRIDE_LEAVEHOOK(NtOpenFile);
+    MINHOOK_LEAVEFUNC(NtOpenFile);
     return status;
 }
 
@@ -622,12 +592,12 @@ static NTSTATUS NTAPI NtCreateSection_hook(
     IN ULONG AllocationAttributes,
     IN OPTIONAL HANDLE FileHandle)
 {
-    WINOVERRIDE_ENTERHOOK(NtCreateSection);
+    MINHOOK_ENTERFUNC(NtCreateSection);
     NTSTATUS status = -1;
     status = pfn(SectionHandle, DesiredAccess,
         ObjectAttributes, MaximumSize, SectionPageProtection,
         AllocationAttributes, FileHandle);
-    WINOVERRIDE_LEAVEHOOK(NtCreateSection);
+    MINHOOK_LEAVEFUNC(NtCreateSection);
     return status;
 }
 
@@ -642,12 +612,12 @@ static NTSTATUS NTAPI NtCreateSectionEx_hook(
     IN OUT PVOID ExtendedParameters,
     ULONG ExtendedParameterCount)
 {
-    WINOVERRIDE_ENTERHOOK(NtCreateSectionEx);
+    MINHOOK_ENTERFUNC(NtCreateSectionEx);
     NTSTATUS status = -1;
     status  = pfn(SectionHandle, DesiredAccess,
         ObjectAttributes, MaximumSize, SectionPageProtection, AllocationAttributes, 
         FileHandle, ExtendedParameters, ExtendedParameterCount);
-    WINOVERRIDE_LEAVEHOOK(NtCreateSectionEx);
+    MINHOOK_LEAVEFUNC(NtCreateSectionEx);
     return status;
 }
 
@@ -655,10 +625,10 @@ static NTSTATUS NTAPI NtQueryAttributesFile_hook(
     IN POBJECT_ATTRIBUTES   ObjectAttributes,
     OUT PFILE_BASIC_INFORMATION FileAttributes)
 {
-    WINOVERRIDE_ENTERHOOK(NtQueryAttributesFile);
+    MINHOOK_ENTERFUNC(NtQueryAttributesFile);
     NTSTATUS status = -1;
     status = pfn(ObjectAttributes, FileAttributes);
-    WINOVERRIDE_LEAVEHOOK(NtQueryAttributesFile);
+    MINHOOK_LEAVEFUNC(NtQueryAttributesFile);
     return status;
 }
 
@@ -667,7 +637,7 @@ static NTSTATUS NTAPI NtQueryFullAttributesFile_hook(
     IN POBJECT_ATTRIBUTES   ObjectAttributes,
     OUT PFILE_NETWORK_OPEN_INFORMATION  FileInformation)
 {
-    WINOVERRIDE_ENTERHOOK(NtQueryFullAttributesFile);
+    MINHOOK_ENTERFUNC(NtQueryFullAttributesFile);
     NTSTATUS status = -1;
     BOOL flag_redirect = FALSE;
     wchar_t rel[MAX_PATH] = { 0 }, target[MAX_PATH] = { 0 };
@@ -692,7 +662,7 @@ NtQueryFullAttributesFile_hook_end:
         if (rel[0] && NT_SUCCESS(status)) LOGLi(L"FILE %ls size=0x%llx\n", rel, FileInformation->EndOfFile.QuadPart);
     }
 
-    WINOVERRIDE_LEAVEHOOK(NtQueryFullAttributesFile);
+    MINHOOK_LEAVEFUNC(NtQueryFullAttributesFile);
     return status;
 }
 
@@ -704,12 +674,12 @@ static NTSTATUS NTAPI NtQueryInformationFile_hook(
     IN ULONG Length,
     IN FILE_INFORMATION_CLASS FileInformationClass)
 {
-    WINOVERRIDE_ENTERHOOK(NtQueryInformationFile);
+    MINHOOK_ENTERFUNC(NtQueryInformationFile);
     NTSTATUS status = -1;
     status = pfn(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
     // LOGLi(L"handle=%p %d\n", FileHandle, FileInformationClass);
     _parse_query(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
-    WINOVERRIDE_LEAVEHOOK(NtQueryInformationFile);
+    MINHOOK_LEAVEFUNC(NtQueryInformationFile);
     return status;
 }
 
@@ -726,7 +696,7 @@ static NTSTATUS NTAPI NtQueryDirectoryFile_hook(
     IN OPTIONAL PUNICODE_STRING FileName,
     IN BOOLEAN RestartScan)
 {
-    WINOVERRIDE_ENTERHOOK(NtQueryDirectoryFile);
+    MINHOOK_ENTERFUNC(NtQueryDirectoryFile);
     NTSTATUS status = -1;
     status  =  pfn(FileHandle, Event,
         ApcRoutine, ApcContext, IoStatusBlock,
@@ -734,7 +704,7 @@ static NTSTATUS NTAPI NtQueryDirectoryFile_hook(
         ReturnSingleEntry, FileName, RestartScan);
     // LOGLi(L"handle=%p %d\n", FileHandle, FileInformationClass);
     _parse_query(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
-    WINOVERRIDE_LEAVEHOOK(NtQueryDirectoryFile);
+    MINHOOK_LEAVEFUNC(NtQueryDirectoryFile);
     return status;
 }
 
@@ -750,19 +720,106 @@ static NTSTATUS NTAPI NtQueryDirectoryFileEx_hook(
     IN ULONG QueryFlags,
     IN OPTIONAL PUNICODE_STRING FileName)
 {
-    WINOVERRIDE_ENTERHOOK(NtQueryDirectoryFileEx);
+    MINHOOK_ENTERFUNC(NtQueryDirectoryFileEx);
     NTSTATUS status = -1;
     status = pfn(FileHandle, Event, ApcRoutine, ApcContext,
         IoStatusBlock, FileInformation, Length,
         FileInformationClass, QueryFlags, FileName);
     // LOGLi(L"handle=%p %d\n", FileHandle, FileInformationClass);
     _parse_query(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
-    WINOVERRIDE_LEAVEHOOK(NtQueryDirectoryFileEx);
+    MINHOOK_LEAVEFUNC(NtQueryDirectoryFileEx);
     return status;
 }
 #endif
 
 #if 1 // winoverride_font
+#endif
+
+#if 1 // winoverride_patch
+WINOVERRIDE_API
+int winoverride_patchpatternw(wchar_t *pattern)
+{
+    if (!pattern) return -1;
+    size_t imagebase = (size_t)GetModuleHandleA(NULL);
+    int res = 0;
+    int flag_rel = 0;
+    int j = 0;
+    while (pattern[j]) j++;
+    int patternlen = j;
+    DWORD oldprotect;
+
+    for (int i=0; i<patternlen; i++)
+    {
+        if (pattern[i] == L'#')
+        {
+            while (pattern[i] != L'\n' && i<patternlen) i++;
+            continue;
+        }
+        else if (pattern[i] == L'\n' || pattern[i] == L'\r')
+        {
+            continue;
+        }
+        else if (pattern[i] == L'+')
+        {
+            flag_rel = 1;
+            i++;
+        }
+        while (pattern[i] == L' ') i++;
+
+        size_t addr = 0;
+        int flag_nextline = 0;
+        for (; pattern[i] != L':' && i<patternlen; i++)
+        {
+            char c = (char)pattern[i];
+            if(c>='0' && c<='9') c -= '0';
+            else if (c>='A' && c<='Z') c = c -'A' + 10;
+            else if (c>='a' && c<='z') c = c -'a' + 10;
+            else if (c=='\r' || c=='\n') {flag_nextline=1;break;}
+            else if (c==' ') continue;
+            else return -2;
+            addr = (addr<<4) + c;
+        }
+        if(flag_nextline) continue;
+        if(flag_rel) addr += imagebase;
+
+        int n = 0;
+        int v = 0;
+        int start = i++;
+        for (int j=0; j<2; j++)
+        {
+            n = 0;
+            for (; pattern[i] != L'\n' && i<patternlen; i++)
+            {
+                char c = (char)pattern[i];
+                if (c>='0' && c<='9') c -= '0';
+                else if (c>='A' && c<='Z') c = c - 'A' + 10;
+                else if (c>='a' && c<='z') c = c - 'a' + 10;
+                else if (c==';') break;
+                else continue;
+                n++;
+                if (j != 0)
+                {
+                    v = (v << 4) + c;
+                    if (!(n & 1))
+                    {
+                        *(uint8_t*)(addr + (n>>1) -1) = v;
+                        v = 0;
+                        res++;
+                    }
+                }
+            }
+            if(n&1) return -3;
+            if (j == 0)
+            {
+                i = start;
+                VirtualProtect((void*)addr, n>>1, PAGE_EXECUTE_READWRITE, &oldprotect);
+            }
+            else VirtualProtect((void*)addr, n>>1, oldprotect, &oldprotect);
+        }
+        flag_rel = 0;
+    }
+    return res;
+}
 #endif
 
 static void winoverride_readcfg(const char *cfgpath)
@@ -800,6 +857,7 @@ static void winoverride_readcfg(const char *cfgpath)
         LOAD_CFG_STR(fontname);
         LOAD_CFG_STR(fontpath)
         LOAD_CFG_STR(patch);
+        LOAD_CFG_STR(dllpath);
     }
 #undef LOAD_CFG_INT
 #undef LOAD_CFG_STR
@@ -835,15 +893,15 @@ void winoverride_install(bool init_minhook, const char *cfgpath)
     if (g_winoverride_cfg.override_file)
     {
         HMODULE ntdll = GetModuleHandle("ntdll.dll");
-        WINOVERRIDE_BINDHOOK(ntdll, NtCreateFile);
-        WINOVERRIDE_BINDHOOK(ntdll, NtOpenFile);
-        WINOVERRIDE_BINDHOOK(ntdll, NtCreateSection);
-        WINOVERRIDE_BINDHOOK(ntdll, NtCreateSectionEx);
-        WINOVERRIDE_BINDHOOK(ntdll, NtQueryAttributesFile);
-        WINOVERRIDE_BINDHOOK(ntdll, NtQueryFullAttributesFile);
-        WINOVERRIDE_BINDHOOK(ntdll, NtQueryInformationFile);
-        WINOVERRIDE_BINDHOOK(ntdll, NtQueryDirectoryFile);
-        WINOVERRIDE_BINDHOOK(ntdll, NtQueryDirectoryFileEx);
+        MINHOOK_BINDEXP(ntdll, NtCreateFile);
+        MINHOOK_BINDEXP(ntdll, NtOpenFile);
+        MINHOOK_BINDEXP(ntdll, NtCreateSection);
+        MINHOOK_BINDEXP(ntdll, NtCreateSectionEx);
+        MINHOOK_BINDEXP(ntdll, NtQueryAttributesFile);
+        MINHOOK_BINDEXP(ntdll, NtQueryFullAttributesFile);
+        MINHOOK_BINDEXP(ntdll, NtQueryInformationFile);
+        MINHOOK_BINDEXP(ntdll, NtQueryDirectoryFile);
+        MINHOOK_BINDEXP(ntdll, NtQueryDirectoryFileEx);
     }
 
     if (g_winoverride_cfg.override_codepage)
@@ -855,21 +913,32 @@ void winoverride_install(bool init_minhook, const char *cfgpath)
     {
 
     }
+
+    if (g_winoverride_cfg.patch[0])
+    {
+        int n = winoverride_patchpatternw(g_winoverride_cfg.patch);
+        LOGi("applied %d patches\n", n);
+    }
+    if (g_winoverride_cfg.dllpath[0])
+    {
+        HMODULE hmod = LoadLibraryW(g_winoverride_cfg.dllpath);
+        LOGLi(L"LoadLibraryW %ls hmod=%p\n", g_winoverride_cfg.dllpath, hmod);
+    }
 }
 
 void winoverride_uninstall(bool uninit_minhook)
 {
     if (g_winoverride_cfg.override_file)
     {
-        WINOVERRIDE_UNBINDHOOK(NtCreateFile);
-        WINOVERRIDE_UNBINDHOOK(NtOpenFile);
-        WINOVERRIDE_UNBINDHOOK(NtCreateSection);
-        WINOVERRIDE_UNBINDHOOK(NtCreateSectionEx);
-        WINOVERRIDE_UNBINDHOOK(NtQueryAttributesFile);
-        WINOVERRIDE_UNBINDHOOK(NtQueryFullAttributesFile);
-        WINOVERRIDE_UNBINDHOOK(NtQueryInformationFile);
-        WINOVERRIDE_UNBINDHOOK(NtQueryDirectoryFile);
-        WINOVERRIDE_UNBINDHOOK(NtQueryDirectoryFileEx);
+        MINHOOK_UNBIND(NtCreateFile);
+        MINHOOK_UNBIND(NtOpenFile);
+        MINHOOK_UNBIND(NtCreateSection);
+        MINHOOK_UNBIND(NtCreateSectionEx);
+        MINHOOK_UNBIND(NtQueryAttributesFile);
+        MINHOOK_UNBIND(NtQueryFullAttributesFile);
+        MINHOOK_UNBIND(NtQueryInformationFile);
+        MINHOOK_UNBIND(NtQueryDirectoryFile);
+        MINHOOK_UNBIND(NtQueryDirectoryFileEx);
     }
 
     if (g_winoverride_cfg.override_codepage)
@@ -908,4 +977,5 @@ void winoverride_uninstall(bool uninit_minhook)
  *         NtQueryInformationFile, NtQueryDirectoryFile
  * v0.1.4, add config file, redirect without directory
  * v0.1.5, add redirectdir in config file
+ * v0.1.6, add patch pattern
  */
