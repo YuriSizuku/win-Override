@@ -1,6 +1,6 @@
 /**
  * single header file file repatch tool
- *   v0.1.7 developed by devseed
+ *   v0.1.8 developed by devseed
  * 
  * macros:
  *    WINOVERRIDE_IMPLEMENTATION, include implements of each function
@@ -19,7 +19,7 @@
 extern "C" {
 #endif
 
-#define WINOVERRIDE_VERSION "0.1.7"
+#define WINOVERRIDE_VERSION "0.1.8"
 
 #include <stdbool.h>
 #ifdef USECOMPAT
@@ -101,7 +101,7 @@ static struct winoverride_cfg_t  g_winoverride_cfg = {
     .patch = {L"\0"}, .dllpath = {L"\0"}
 };
 
-#ifndef WINOVERRIDE_NOFILEOVERRIDE // winoverride_file
+#ifndef WINOVERRIDE_NOFILE
 MINHOOK_DEFINE(NtCreateFile);
 MINHOOK_DEFINE(NtOpenFile);
 MINHOOK_DEFINE(NtCreateSection);
@@ -434,7 +434,119 @@ static NTSTATUS NTAPI NtQueryDirectoryFileEx_hook(
 }
 #endif
 
-#ifndef WINOVERRIDE_NOFONT // winoverride_font
+#ifndef WINOVERRIDE_NOCODEPAGE
+MINHOOK_DEFINE(MultiByteToWideChar);
+MINHOOK_DEFINE(WideCharToMultiByte);
+MINHOOK_DEFINE(GetACP);
+MINHOOK_DEFINE(GetOEMCP);
+MINHOOK_DEFINE(GetCPInfo);
+MINHOOK_DEFINE(GetCPInfoExA);
+MINHOOK_DEFINE(GetCPInfoExW);
+MINHOOK_DEFINE(IsDBCSLeadByte);
+MINHOOK_DEFINE(IsDBCSLeadByteEx);
+
+static int WINAPI MultiByteToWideChar_hook(
+    UINT CodePage, 
+    DWORD dwFlags, 
+    LPCCH lpMultiByteStr, 
+    int cbMultiByte, 
+    LPWSTR lpWideCharStr, 
+    int cchWideChar)
+{
+    MINHOOK_ENTERFUNC(MultiByteToWideChar);
+    if (g_winoverride_cfg.forcecodepage) CodePage = g_winoverride_cfg.codepage;
+    else if (CodePage == CP_ACP) CodePage = g_winoverride_cfg.codepage;
+    int res = pfn(CodePage, dwFlags, 
+        lpMultiByteStr, cbMultiByte, lpWideCharStr, cchWideChar);
+    MINHOOK_LEAVEFUNC(MultiByteToWideChar);
+    return res;
+}
+
+static int WINAPI WideCharToMultiByte_hook(
+    UINT CodePage, 
+    DWORD dwFlags, 
+    LPCWCH lpWideCharStr, 
+    int cchWideChar, 
+    LPSTR lpMultiByteStr, 
+    int cbMultiByte, 
+    LPCCH lpDefaultChar, 
+    LPBOOL lpUsedDefaultChar)
+{
+    MINHOOK_ENTERFUNC(WideCharToMultiByte);
+    if (g_winoverride_cfg.forcecodepage) CodePage = g_winoverride_cfg.codepage;
+    else if (CodePage == CP_ACP) CodePage = g_winoverride_cfg.codepage;
+    int res = pfn(CodePage, dwFlags, lpWideCharStr, cchWideChar, 
+        lpMultiByteStr, cbMultiByte, lpDefaultChar, lpUsedDefaultChar);
+    MINHOOK_LEAVEFUNC(WideCharToMultiByte);
+    return res;
+}
+
+static UINT WINAPI GetACP_hook(void)
+{
+    MINHOOK_ENTERFUNC(GetACP);
+    UINT res = pfn();
+    if (g_winoverride_cfg.codepage) res =  g_winoverride_cfg.codepage;
+    MINHOOK_LEAVEFUNC(GetACP);
+    return res; 
+}   
+
+static UINT WINAPI GetOEMCP_hook(void)
+{
+    MINHOOK_ENTERFUNC(GetOEMCP);
+    UINT res = pfn();
+    if (g_winoverride_cfg.codepage) res =  g_winoverride_cfg.codepage;
+    MINHOOK_LEAVEFUNC(GetOEMCP);
+    return res;
+}
+
+static BOOL WINAPI GetCPInfo_hook(UINT CodePage, LPCPINFO lpCPInfo)
+{
+    MINHOOK_ENTERFUNC(GetCPInfo);
+    if (g_winoverride_cfg.codepage) CodePage = g_winoverride_cfg.codepage;
+    BOOL res = pfn(CodePage, lpCPInfo);
+    MINHOOK_LEAVEFUNC(GetCPInfo);
+    return res;
+}
+
+static BOOL WINAPI GetCPInfoExA_hook(UINT CodePage, DWORD dwFlags, LPCPINFOEXA lpCPInfoEx)
+{
+    MINHOOK_ENTERFUNC(GetCPInfoExA);
+    if (g_winoverride_cfg.codepage) CodePage = g_winoverride_cfg.codepage;
+    BOOL res = pfn(CodePage, dwFlags, lpCPInfoEx);
+    MINHOOK_LEAVEFUNC(GetCPInfoExA);
+    return res;
+}
+
+static BOOL WINAPI GetCPInfoExW_hook(UINT CodePage, DWORD dwFlags, LPCPINFOEXW lpCPInfoEx)
+{
+    MINHOOK_ENTERFUNC(GetCPInfoExW);
+    if (g_winoverride_cfg.codepage) CodePage = g_winoverride_cfg.codepage;
+    BOOL res = pfn(CodePage, dwFlags, lpCPInfoEx);
+    MINHOOK_LEAVEFUNC(GetCPInfoExW);
+    return res;
+}
+
+static BOOL WINAPI IsDBCSLeadByte_hook(BYTE TestChar)
+{
+    MINHOOK_ENTERFUNC(IsDBCSLeadByte);
+    T_IsDBCSLeadByteEx pfn2 = IsDBCSLeadByteEx_org;
+    BOOL res = g_winoverride_cfg.codepage ? pfn2(g_winoverride_cfg.codepage, TestChar) : pfn(TestChar);
+    MINHOOK_LEAVEFUNC(IsDBCSLeadByte);
+    return res;
+}
+
+static BOOL WINAPI IsDBCSLeadByteEx_hook(UINT CodePage, BYTE TestChar)
+{
+    MINHOOK_ENTERFUNC(IsDBCSLeadByteEx);
+    if (g_winoverride_cfg.codepage) CodePage = g_winoverride_cfg.codepage;
+    BOOL res = pfn(CodePage, TestChar);
+    MINHOOK_LEAVEFUNC(IsDBCSLeadByteEx);
+    return res;
+}
+
+#endif
+
+#ifndef WINOVERRIDE_NOFONT
 #endif
 
 #if 1 // winoverride_patch
@@ -631,7 +743,16 @@ void winoverride_install(bool init_minhook, const char *cfgpath)
 #ifndef WINOVERRIDE_NOCODEPAGE
     if (g_winoverride_cfg.override_codepage)
     {
-
+        HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
+        MINHOOK_BINDEXP(kernel32, MultiByteToWideChar);
+        MINHOOK_BINDEXP(kernel32, WideCharToMultiByte);
+        MINHOOK_BINDEXP(kernel32, GetACP);
+        MINHOOK_BINDEXP(kernel32, GetOEMCP);
+        MINHOOK_BINDEXP(kernel32, GetCPInfo);
+        MINHOOK_BINDEXP(kernel32, GetCPInfoExA);
+        MINHOOK_BINDEXP(kernel32, GetCPInfoExW);
+        MINHOOK_BINDEXP(kernel32, IsDBCSLeadByte);
+        MINHOOK_BINDEXP(kernel32, IsDBCSLeadByteEx);
     }
 #endif
 
@@ -674,7 +795,15 @@ void winoverride_uninstall(bool uninit_minhook)
 #ifndef WINOVERRIDE_NOCODEPAGE
     if (g_winoverride_cfg.override_codepage)
     {
-
+        MINHOOK_UNBIND(MultiByteToWideChar);
+        MINHOOK_UNBIND(WideCharToMultiByte);
+        MINHOOK_UNBIND(GetACP);
+        MINHOOK_UNBIND(GetOEMCP);
+        MINHOOK_UNBIND(GetCPInfo);
+        MINHOOK_UNBIND(GetCPInfoExA);
+        MINHOOK_UNBIND(GetCPInfoExW);
+        MINHOOK_UNBIND(IsDBCSLeadByte);
+        MINHOOK_UNBIND(IsDBCSLeadByteEx);
     }
 #endif
 
@@ -709,8 +838,9 @@ void winoverride_uninstall(bool uninit_minhook)
  * v0.1.3, add NtCreateSection, NtCreateSectionEx,
  *         NtQueryAttributesFile, NtQueryFullAttributesFile,
  *         NtQueryInformationFile, NtQueryDirectoryFile
- * v0.1.4, add config file, redirect without directory
+ * v0.1.4, add config file, disable directory override
  * v0.1.5, add redirectdir in config file
- * v0.1.6, add patch pattern
+ * v0.1.6, support patch pattern
  * v0.1.7, add WINOVERRIDE_NOFILE, WINOVERRIDE_NOFONT, WINOVERRIDE_NOCODEPAGE
+ * v0.1.8, support override codepage
  */
