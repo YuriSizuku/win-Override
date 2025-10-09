@@ -1,12 +1,15 @@
 /**
  * single header file file repatch tool
- *   v0.1.6 developed by devseed
+ *   v0.1.7 developed by devseed
  * 
  * macros:
  *    WINOVERRIDE_IMPLEMENTATION, include implements of each function
  *    WINOVERRIDE_SHARED, make function export
  *    WINOVERRIDE_STATIC, make function static
  *    WINOVERRIDE_REDIRECTDIRW, redirect dir
+ *    WINOVERRIDE_NOFILE, use this to disable file hook
+ *    WINOVERRIDE_NOFONT, use this to disable font hook
+ *    WINOVERRIDE_NOCODEPAGE, use this to disable codepage hook
 */
 
 #ifndef _WINOVERRIDE_H
@@ -16,7 +19,7 @@
 extern "C" {
 #endif
 
-#define WINOVERRIDE_FILE_VERSION "0.1.6"
+#define WINOVERRIDE_VERSION "0.1.7"
 
 #include <stdbool.h>
 #ifdef USECOMPAT
@@ -62,8 +65,14 @@ void winoverride_uninstall(bool unint_minhook);
 
 #ifdef USECOMPAT
 #include "stb_minhook_v1_3_4.h"
+#include "windynntdll_v0_1_1.h"
+#include "windynkernel32_v0_1_7.h"
+#include "windyngdi32_v0_1.h"
 #else
 #include "stb_minhook.h"
+#include "windynntdll.h"
+#include "windynkernel32.h"
+#include "windyngdi32.h"
 #endif
 
 #ifndef WINOVERRIDE_REDIRECTDIRW
@@ -92,281 +101,7 @@ static struct winoverride_cfg_t  g_winoverride_cfg = {
     .patch = {L"\0"}, .dllpath = {L"\0"}
 };
 
-#if 1 // winoverride_file
-#if defined(_MSC_VER) || defined(__TINYC__)
-#pragma warning(push)
-#pragma warning(disable: 4005)
-#include <windows.h>
-#include <winternl.h>
-#pragma warning(pop)
-#else
-#include <windows.h>
-#include <winternl.h>
-#include <ntstatus.h>
-#endif // _MSC_VER
-#ifndef STATUS_SUCCESS
-#define STATUS_SUCCESS ((NTSTATUS)0x00000000)
-#endif
-
-#if defined (__TINYC__)
-typedef enum _OBJECT_INFORMATION_CLASS {
-    ObjectBasicInformation = 0,
-    ObjectTypeInformation = 2
-} OBJECT_INFORMATION_CLASS;
-#define FILE_DIRECTORY_FILE  0x00000001
-#define FILE_SUPERSEDED 0x00000000
-#define FILE_OPENED 0x00000001
-#define FILE_CREATED 0x00000002
-#define FILE_OVERWRITTEN 0x00000003
-#define FILE_EXISTS 0x00000004
-#define FILE_DOES_NOT_EXIST 0x00000005
-#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
-#endif
-
-#if defined (_MSC_VER) || defined (__TINYC__)
-typedef struct _FILE_STAT_INFORMATION {
-    LARGE_INTEGER FileId;
-    LARGE_INTEGER CreationTime;
-    LARGE_INTEGER LastAccessTime;
-    LARGE_INTEGER LastWriteTime;
-    LARGE_INTEGER ChangeTime;
-    LARGE_INTEGER AllocationSize;
-    LARGE_INTEGER EndOfFile;
-    ULONG         FileAttributes;
-    ULONG         ReparseTag;
-    ULONG         NumberOfLinks;
-    ACCESS_MASK   EffectiveAccess;
-} FILE_STAT_INFORMATION, * PFILE_STAT_INFORMATION;
-
-typedef struct _FILE_BASIC_INFORMATION {
-    LARGE_INTEGER CreationTime;
-    LARGE_INTEGER LastAccessTime;
-    LARGE_INTEGER LastWriteTime;
-    LARGE_INTEGER ChangeTime;
-    ULONG FileAttributes;
-} FILE_BASIC_INFORMATION, * PFILE_BASIC_INFORMATION;
-
-typedef struct _FILE_POSITION_INFORMATION {
-    LARGE_INTEGER CurrentByteOffset;
-} FILE_POSITION_INFORMATION, * PFILE_POSITION_INFORMATION;
-
-typedef struct _FILE_STANDARD_INFORMATION {
-    LARGE_INTEGER AllocationSize;
-    LARGE_INTEGER EndOfFile;
-    ULONG         NumberOfLinks;
-    BOOLEAN       DeletePending;
-    BOOLEAN       Directory;
-} FILE_STANDARD_INFORMATION, * PFILE_STANDARD_INFORMATION;
-
-typedef struct _FILE_INTERNAL_INFORMATION {
-    LARGE_INTEGER IndexNumber;
-} FILE_INTERNAL_INFORMATION, * PFILE_INTERNAL_INFORMATION;
-
-typedef struct _FILE_EA_INFORMATION {
-    ULONG EaSize;
-} FILE_EA_INFORMATION, * PFILE_EA_INFORMATION;
-
-typedef struct _FILE_ACCESS_INFORMATION {
-    ACCESS_MASK AccessFlags;
-} FILE_ACCESS_INFORMATION, * PFILE_ACCESS_INFORMATION;
-
-typedef struct _FILE_MODE_INFORMATION {
-    ULONG Mode;
-} FILE_MODE_INFORMATION, * PFILE_MODE_INFORMATION;
-
-typedef struct _FILE_ALIGNMENT_INFORMATION {
-    ULONG AlignmentRequirement;
-} FILE_ALIGNMENT_INFORMATION, * PFILE_ALIGNMENT_INFORMATION;
-
-typedef struct _FILE_DIRECTORY_INFORMATION {
-    ULONG         NextEntryOffset;
-    ULONG         FileIndex;
-    LARGE_INTEGER CreationTime;
-    LARGE_INTEGER LastAccessTime;
-    LARGE_INTEGER LastWriteTime;
-    LARGE_INTEGER ChangeTime;
-    LARGE_INTEGER EndOfFile;
-    LARGE_INTEGER AllocationSize;
-    ULONG         FileAttributes;
-    ULONG         FileNameLength;
-    WCHAR         FileName[1];
-}FILE_DIRECTORY_INFORMATION, * PFILE_DIRECTORY_INFORMATION;
-
-typedef struct _FILE_NAME_INFORMATION {
-    ULONG FileNameLength;
-    WCHAR FileName[1];
-} FILE_NAME_INFORMATION, * PFILE_NAME_INFORMATION;
-
-typedef struct _FILE_ALL_INFORMATION {
-    FILE_BASIC_INFORMATION     BasicInformation;
-    FILE_STANDARD_INFORMATION  StandardInformation;
-    FILE_INTERNAL_INFORMATION  InternalInformation;
-    FILE_EA_INFORMATION        EaInformation;
-    FILE_ACCESS_INFORMATION    AccessInformation;
-    FILE_POSITION_INFORMATION  PositionInformation;
-    FILE_MODE_INFORMATION      ModeInformation;
-    FILE_ALIGNMENT_INFORMATION AlignmentInformation;
-    FILE_NAME_INFORMATION      NameInformation;
-} FILE_ALL_INFORMATION, * PFILE_ALL_INFORMATION;
-
-typedef struct _FILE_FULL_DIR_INFORMATION {
-    ULONG         NextEntryOffset;
-    ULONG         FileIndex;
-    LARGE_INTEGER CreationTime;
-    LARGE_INTEGER LastAccessTime;
-    LARGE_INTEGER LastWriteTime;
-    LARGE_INTEGER ChangeTime;
-    LARGE_INTEGER EndOfFile;
-    LARGE_INTEGER AllocationSize;
-    ULONG         FileAttributes;
-    ULONG         FileNameLength;
-    ULONG         EaSize;
-    WCHAR         FileName[1];
-} FILE_FULL_DIR_INFORMATION, * PFILE_FULL_DIR_INFORMATION;
-
-typedef struct _FILE_BOTH_DIR_INFORMATION {
-    ULONG         NextEntryOffset;
-    ULONG         FileIndex;
-    LARGE_INTEGER CreationTime;
-    LARGE_INTEGER LastAccessTime;
-    LARGE_INTEGER LastWriteTime;
-    LARGE_INTEGER ChangeTime;
-    LARGE_INTEGER EndOfFile;
-    LARGE_INTEGER AllocationSize;
-    ULONG         FileAttributes;
-    ULONG         FileNameLength;
-    ULONG         EaSize;
-    CCHAR         ShortNameLength;
-    WCHAR         ShortName[12];
-    WCHAR         FileName[1];
-} FILE_BOTH_DIR_INFORMATION, * PFILE_BOTH_DIR_INFORMATION;
-
-typedef struct _FILE_ID_BOTH_DIR_INFORMATION {
-    ULONG         NextEntryOffset;
-    ULONG         FileIndex;
-    LARGE_INTEGER CreationTime;
-    LARGE_INTEGER LastAccessTime;
-    LARGE_INTEGER LastWriteTime;
-    LARGE_INTEGER ChangeTime;
-    LARGE_INTEGER EndOfFile;
-    LARGE_INTEGER AllocationSize;
-    ULONG         FileAttributes;
-    ULONG         FileNameLength;
-    ULONG         EaSize;
-    CCHAR         ShortNameLength;
-    WCHAR         ShortName[12];
-    LARGE_INTEGER FileId;
-    WCHAR         FileName[1];
-} FILE_ID_BOTH_DIR_INFORMATION, * PFILE_ID_BOTH_DIR_INFORMATION;
-
-typedef struct _FILE_ID_FULL_DIR_INFORMATION {
-    ULONG         NextEntryOffset;
-    ULONG         FileIndex;
-    LARGE_INTEGER CreationTime;
-    LARGE_INTEGER LastAccessTime;
-    LARGE_INTEGER LastWriteTime;
-    LARGE_INTEGER ChangeTime;
-    LARGE_INTEGER EndOfFile;
-    LARGE_INTEGER AllocationSize;
-    ULONG         FileAttributes;
-    ULONG         FileNameLength;
-    ULONG         EaSize;
-    LARGE_INTEGER FileId;
-    WCHAR         FileName[1];
-} FILE_ID_FULL_DIR_INFORMATION, * PFILE_ID_FULL_DIR_INFORMATION;
-
-typedef struct _FILE_NETWORK_OPEN_INFORMATION {
-    LARGE_INTEGER CreationTime;
-    LARGE_INTEGER LastAccessTime;
-    LARGE_INTEGER LastWriteTime;
-    LARGE_INTEGER ChangeTime;
-    LARGE_INTEGER AllocationSize;
-    LARGE_INTEGER EndOfFile;
-    ULONG         FileAttributes;
-} FILE_NETWORK_OPEN_INFORMATION, * PFILE_NETWORK_OPEN_INFORMATION;
-#endif
-
-typedef NTSTATUS (NTAPI *T_NtCreateFile)(
-    OUT PHANDLE FileHandle,
-    IN ACCESS_MASK DesiredAccess,
-    IN POBJECT_ATTRIBUTES ObjectAttributes,
-    OUT PIO_STATUS_BLOCK IoStatusBlock,
-    IN OPTIONAL PLARGE_INTEGER AllocationSize,
-    IN ULONG FileAttributes,
-    IN ULONG ShareAccess,
-    IN ULONG CreateDisposition,
-    IN ULONG CreateOptions,
-    IN OPTIONAL PVOID EaBuffer,
-    IN ULONG EaLength);
-
-typedef NTSTATUS (NTAPI *T_NtOpenFile)(
-    OUT PHANDLE FileHandle,
-    IN ACCESS_MASK DesiredAccess,
-    IN POBJECT_ATTRIBUTES ObjectAttributes,
-    OUT PIO_STATUS_BLOCK IoStatusBlock,
-    IN ULONG ShareAccess,
-    IN ULONG OpenOptions);
-
-typedef NTSTATUS(NTAPI* T_NtCreateSection)(
-    OUT PHANDLE SectionHandle,
-    IN ACCESS_MASK DesiredAccess,
-    IN OPTIONAL POBJECT_ATTRIBUTES ObjectAttributes,
-    IN OPTIONAL PLARGE_INTEGER MaximumSize,
-    IN ULONG SectionPageProtection,
-    IN ULONG AllocationAttributes,
-    IN OPTIONAL HANDLE FileHandle);
-
-typedef NTSTATUS(NTAPI* T_NtCreateSectionEx)(
-    OUT PHANDLE SectionHandle,
-    IN ACCESS_MASK DesiredAccess,
-    IN OPTIONAL POBJECT_ATTRIBUTES ObjectAttributes,
-    IN OPTIONAL PLARGE_INTEGER MaximumSize,
-    IN ULONG SectionPageProtection,
-    IN ULONG AllocationAttributes,
-    IN OPTIONAL HANDLE FileHandle,
-    IN OUT PVOID ExtendedParameters,
-    ULONG ExtendedParameterCount);
-
-typedef NTSTATUS(NTAPI* T_NtQueryAttributesFile)(
-    IN POBJECT_ATTRIBUTES   ObjectAttributes,
-    OUT PFILE_BASIC_INFORMATION FileAttributes);
-
-typedef NTSTATUS(NTAPI* T_NtQueryFullAttributesFile)(
-    IN POBJECT_ATTRIBUTES   ObjectAttributes,
-    OUT PFILE_NETWORK_OPEN_INFORMATION  FileInformation);
-
-typedef NTSTATUS(NTAPI* T_NtQueryInformationFile)(
-    IN HANDLE FileHandle,
-    OUT PIO_STATUS_BLOCK IoStatusBlock,
-    OUT PVOID FileInformation,
-    IN ULONG Length,
-    IN FILE_INFORMATION_CLASS FileInformationClass);
-
-typedef NTSTATUS(NTAPI* T_NtQueryDirectoryFile)(
-    IN HANDLE FileHandle,
-    IN OPTIONAL HANDLE Event,
-    IN OPTIONAL PIO_APC_ROUTINE ApcRoutine,
-    IN OPTIONAL PVOID ApcContext,
-    OUT PIO_STATUS_BLOCK IoStatusBlock,
-    OUT PVOID FileInformation,
-    IN ULONG Length,
-    IN FILE_INFORMATION_CLASS FileInformationClass,
-    IN BOOLEAN ReturnSingleEntry,
-    IN OPTIONAL PUNICODE_STRING FileName,
-    IN BOOLEAN RestartScan);
-
-typedef NTSTATUS(NTAPI* T_NtQueryDirectoryFileEx)(
-    IN HANDLE FileHandle,
-    IN HANDLE Event,
-    IN OPTIONAL PIO_APC_ROUTINE ApcRoutine,
-    IN OPTIONAL PVOID ApcContext,
-    OUT PIO_STATUS_BLOCK IoStatusBlock,
-    OUT PVOID FileInformation,
-    IN ULONG Length,
-    FILE_INFORMATION_CLASS FileInformationClass,
-    IN ULONG QueryFlags,
-    IN OPTIONAL PUNICODE_STRING FileName);
-
+#ifndef WINOVERRIDE_NOFILEOVERRIDE // winoverride_file
 MINHOOK_DEFINE(NtCreateFile);
 MINHOOK_DEFINE(NtOpenFile);
 MINHOOK_DEFINE(NtCreateSection);
@@ -449,39 +184,6 @@ static void _parse_query(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
     default:
         break;
     }
-}
-
-size_t winoverride_relpathw(const wchar_t* srcpath, const wchar_t* basepath, wchar_t* relpath)
-{
-    if (!srcpath || !basepath || !relpath) return 0;
-
-    relpath[0] = L'\0';
-    if (wcslen(srcpath) >= 7 && wcsncmp(srcpath, L"\\Device", 7) == 0) return 0;
-    if (wcslen(srcpath) >= 7 && wcsncmp(srcpath, L"\\DEVICE", 7) == 0) return 0;
-    if (wcslen(srcpath) >= 4 && wcsncmp(srcpath, L"\\??\\", 4) == 0) // nt global path
-    {
-
-        if (wcsstr(srcpath + 4, basepath))
-        {
-            wcscpy(relpath, srcpath + 4 + wcslen(basepath));
-        }
-    }
-    else
-    {
-        wcscpy(relpath, srcpath);
-    }
-
-    for (int i = 0; relpath[i]; i++)
-    {
-        if (relpath[i] == L'/') relpath[i] = L'\\';
-    }
-
-    int offset = 0;
-    if (relpath[0] == L'\\') offset = 1;
-    else if (relpath[0] == L'.' && relpath[1] == L'\\') offset = 2;
-    if (offset > 0) wcsncpy(relpath, relpath + offset, wcslen(relpath) + 1 - offset);
-
-    return wcslen(relpath);
 }
 
 static NTSTATUS NTAPI NtCreateFile_hook( 
@@ -732,11 +434,43 @@ static NTSTATUS NTAPI NtQueryDirectoryFileEx_hook(
 }
 #endif
 
-#if 1 // winoverride_font
+#ifndef WINOVERRIDE_NOFONT // winoverride_font
 #endif
 
 #if 1 // winoverride_patch
-WINOVERRIDE_API
+size_t winoverride_relpathw(const wchar_t* srcpath, const wchar_t* basepath, wchar_t* relpath)
+{
+    if (!srcpath || !basepath || !relpath) return 0;
+
+    relpath[0] = L'\0';
+    if (wcslen(srcpath) >= 7 && wcsncmp(srcpath, L"\\Device", 7) == 0) return 0;
+    if (wcslen(srcpath) >= 7 && wcsncmp(srcpath, L"\\DEVICE", 7) == 0) return 0;
+    if (wcslen(srcpath) >= 4 && wcsncmp(srcpath, L"\\??\\", 4) == 0) // nt global path
+    {
+
+        if (wcsstr(srcpath + 4, basepath))
+        {
+            wcscpy(relpath, srcpath + 4 + wcslen(basepath));
+        }
+    }
+    else
+    {
+        wcscpy(relpath, srcpath);
+    }
+
+    for (int i = 0; relpath[i]; i++)
+    {
+        if (relpath[i] == L'/') relpath[i] = L'\\';
+    }
+
+    int offset = 0;
+    if (relpath[0] == L'\\') offset = 1;
+    else if (relpath[0] == L'.' && relpath[1] == L'\\') offset = 2;
+    if (offset > 0) wcsncpy(relpath, relpath + offset, wcslen(relpath) + 1 - offset);
+
+    return wcslen(relpath);
+}
+
 int winoverride_patchpatternw(wchar_t *pattern)
 {
     if (!pattern) return -1;
@@ -822,14 +556,14 @@ int winoverride_patchpatternw(wchar_t *pattern)
 }
 #endif
 
-static void winoverride_readcfg(const char *cfgpath)
+static bool winoverride_readcfg(const char *cfgpath)
 {
     struct winoverride_cfg_t *cfg = &g_winoverride_cfg;
     FILE *fp = fopen(cfgpath, "rb");
     if (!fp)
     {
-        LOGw("can not find %s", cfgpath);
-        return;
+        LOGw("can not find %s\n", cfgpath);
+        return false;
     }
 
     wchar_t line[1024] = {0};
@@ -862,23 +596,11 @@ static void winoverride_readcfg(const char *cfgpath)
 #undef LOAD_CFG_INT
 #undef LOAD_CFG_STR
     fclose(fp);
+    return true;
 }
 
 void winoverride_install(bool init_minhook, const char *cfgpath)
 {
-    LOGi("winoverride_file v%s, developed by devseed\n", WINOVERRIDE_FILE_VERSION);
-    DWORD winver = GetVersion();
-    DWORD winver_major = (DWORD)(LOBYTE(LOWORD(winver)));
-    DWORD winver_minor = (DWORD)(HIBYTE(LOWORD(winver)));
-    LOGi("version NT=%lu.%lu\n", winver_major, winver_minor);
-    #if defined(_MSC_VER)
-    LOGi("compiler MSVC=%d\n", _MSC_VER)
-    #elif defined(__GNUC__)
-    LOGi("compiler GNUC=%d.%d\n", __GNUC__, __GNUC_MINOR__);
-    #elif defined(__TINYC__)
-    LOGi("compiler TCC\n");
-    #endif
-
     if (init_minhook)
     {
         MH_STATUS status = MH_Initialize();
@@ -890,6 +612,7 @@ void winoverride_install(bool init_minhook, const char *cfgpath)
 
     if (cfgpath) winoverride_readcfg(cfgpath);
 
+#ifndef WINOVERRIDE_NOFILE
     if (g_winoverride_cfg.override_file)
     {
         HMODULE ntdll = GetModuleHandle("ntdll.dll");
@@ -903,16 +626,21 @@ void winoverride_install(bool init_minhook, const char *cfgpath)
         MINHOOK_BINDEXP(ntdll, NtQueryDirectoryFile);
         MINHOOK_BINDEXP(ntdll, NtQueryDirectoryFileEx);
     }
+#endif
 
+#ifndef WINOVERRIDE_NOCODEPAGE
     if (g_winoverride_cfg.override_codepage)
     {
 
     }
+#endif
 
+#ifndef WINOVERRIDE_NOFONT
     if (g_winoverride_cfg.override_font)
     {
 
     }
+#endif
 
     if (g_winoverride_cfg.patch[0])
     {
@@ -928,6 +656,7 @@ void winoverride_install(bool init_minhook, const char *cfgpath)
 
 void winoverride_uninstall(bool uninit_minhook)
 {
+#ifndef WINOVERRIDE_NOFILE
     if (g_winoverride_cfg.override_file)
     {
         MINHOOK_UNBIND(NtCreateFile);
@@ -940,16 +669,21 @@ void winoverride_uninstall(bool uninit_minhook)
         MINHOOK_UNBIND(NtQueryDirectoryFile);
         MINHOOK_UNBIND(NtQueryDirectoryFileEx);
     }
+#endif
 
+#ifndef WINOVERRIDE_NOCODEPAGE
     if (g_winoverride_cfg.override_codepage)
     {
 
     }
+#endif
 
+#ifndef WINOVERRIDE_NOFONT
     if (g_winoverride_cfg.override_font)
     {
 
     }
+#endif
 
     if (uninit_minhook)
     {
@@ -978,4 +712,5 @@ void winoverride_uninstall(bool uninit_minhook)
  * v0.1.4, add config file, redirect without directory
  * v0.1.5, add redirectdir in config file
  * v0.1.6, add patch pattern
+ * v0.1.7, add WINOVERRIDE_NOFILE, WINOVERRIDE_NOFONT, WINOVERRIDE_NOCODEPAGE
  */

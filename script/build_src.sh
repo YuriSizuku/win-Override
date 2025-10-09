@@ -22,6 +22,9 @@ build_csrc()
 
 mkdir -p build/src
 build_csrc depend/winreverse/src build/src commdef
+build_csrc depend/winreverse/src build/src windynntdll
+build_csrc depend/winreverse/src build/src windynkernel32
+build_csrc depend/winreverse/src build/src windyngdi32
 build_csrc src build/src winversion
 build_csrc src build/src winoverride
 cp -f src/winversion.def build/src/winversion.def
