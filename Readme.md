@@ -4,7 +4,7 @@
 
 ☘️ Lightweight and flexible tools for windows game mod (localization).
 
-- override files, See also [psv-rePatch](https://github.com/YuriSizuku/psv-rePatch).  
+- override files, see also [psv-rePatch](https://github.com/YuriSizuku/psv-rePatch).
 - override codepage
 - override fonts
 - apply patches and load dll
@@ -38,12 +38,13 @@ redirectdir=override
 
 # enable override codepage, or force override all codepage
 override_codepage=0
-codepage=0
+codepage=936
 forcecodepage=0
 
 # enable override font, GB2312_CHARSET 134, SHIFTJIS_CHARSET 128
 override_font=0
-charset=0
+createfontcharset=134
+enumfontcharset=128
 fontname=simhei
 fontpath=C:\Windows\Fonts\simhei.ttf
 

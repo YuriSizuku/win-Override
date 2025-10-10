@@ -1,15 +1,15 @@
 /**
- * single header file file repatch tool
- *   v0.1.8 developed by devseed
+ * single header file for overriding files, codepage and fonts
+ *   v0.1.9 developed by devseed
  * 
  * macros:
  *    WINOVERRIDE_IMPLEMENTATION, include implements of each function
  *    WINOVERRIDE_SHARED, make function export
  *    WINOVERRIDE_STATIC, make function static
  *    WINOVERRIDE_REDIRECTDIRW, redirect dir
- *    WINOVERRIDE_NOFILE, use this to disable file hook
- *    WINOVERRIDE_NOFONT, use this to disable font hook
- *    WINOVERRIDE_NOCODEPAGE, use this to disable codepage hook
+ *    WINOVERRIDE_NOFILE, remove file hook code
+ *    WINOVERRIDE_NOCODEPAGE, remove codepage hook code
+ *    WINOVERRIDE_NOFONT, remove font hook code
 */
 
 #ifndef _WINOVERRIDE_H
@@ -19,7 +19,7 @@
 extern "C" {
 #endif
 
-#define WINOVERRIDE_VERSION "0.1.8"
+#define WINOVERRIDE_VERSION "0.1.9"
 
 #include <stdbool.h>
 #ifdef USECOMPAT
@@ -87,7 +87,8 @@ struct winoverride_cfg_t
     int codepage;
     bool forcecodepage;  // force override all codepage
     bool override_font; // enable override font
-    int charset;
+    int createfontcharset;
+    int enumfontcharset;
     wchar_t fontname[32];
     wchar_t fontpath[MAX_PATH];
     wchar_t patch[1024];
@@ -95,9 +96,16 @@ struct winoverride_cfg_t
 };
 
 static struct winoverride_cfg_t  g_winoverride_cfg = {
-    .override_file = true, .redirectdir = WINOVERRIDE_REDIRECTDIRW,
-    .override_codepage = false, .codepage = 0, .forcecodepage = false,
-    .override_font = true, .charset = 0, .fontname = {L"\0"}, .fontpath = {L"\0"},
+    .override_file = true,
+    .redirectdir = WINOVERRIDE_REDIRECTDIRW,
+
+    .override_codepage = false,
+    .codepage = 0, .forcecodepage = false,
+
+    .override_font = true,
+    .createfontcharset = 0, .enumfontcharset = 0,
+    .fontname = {L"\0"}, .fontpath = {L"\0"},
+
     .patch = {L"\0"}, .dllpath = {L"\0"}
 };
 
@@ -254,6 +262,11 @@ static NTSTATUS NTAPI NtOpenFile_hook(
     NTSTATUS status = -1;
     BOOL flag_redirect = FALSE;
     wchar_t rel[MAX_PATH] = { 0 }, target[MAX_PATH] = { 0 };
+
+    if (OpenOptions & FILE_DIRECTORY_FILE) // if dir
+    {
+		goto NtOpenFile_hook_end;
+    }
 
     if ((DesiredAccess & FILE_GENERIC_READ) || (DesiredAccess & FILE_GENERIC_EXECUTE))
     {
@@ -543,10 +556,279 @@ static BOOL WINAPI IsDBCSLeadByteEx_hook(UINT CodePage, BYTE TestChar)
     MINHOOK_LEAVEFUNC(IsDBCSLeadByteEx);
     return res;
 }
-
 #endif
 
 #ifndef WINOVERRIDE_NOFONT
+MINHOOK_DEFINE(CreateFontA)
+MINHOOK_DEFINE(CreateFontW)
+MINHOOK_DEFINE(CreateFontIndirectA)
+MINHOOK_DEFINE(CreateFontIndirectW)
+MINHOOK_DEFINE(CreateFontIndirectExA)
+MINHOOK_DEFINE(CreateFontIndirectExW)
+MINHOOK_DEFINE(EnumFontsA)
+MINHOOK_DEFINE(EnumFontsW)
+MINHOOK_DEFINE(EnumFontFamiliesA)
+MINHOOK_DEFINE(EnumFontFamiliesW)
+MINHOOK_DEFINE(EnumFontFamiliesExA)
+MINHOOK_DEFINE(EnumFontFamiliesExW)
+
+static HFONT WINAPI CreateFontA_hook(
+    int cHeight,
+    int cWidth,
+    int cEscapement,
+    int cOrientation,
+    int cWeight,
+    DWORD bItalic,
+    DWORD bUnderline,
+    DWORD bStrikeOut,
+    DWORD iCharSet,
+    DWORD iOutPrecision,
+    DWORD iClipPrecision,
+    DWORD iQuality,
+    DWORD iPitchAndFamily,
+    LPCSTR pszFaceName)
+{
+    MINHOOK_ENTERFUNC(CreateFontA);
+    T_CreateFontW pfn2 = CreateFontW_org;
+    HFONT hfont = NULL;
+    if (g_winoverride_cfg.createfontcharset) iCharSet = g_winoverride_cfg.createfontcharset;
+    if (g_winoverride_cfg.fontname[0]) hfont = pfn2(
+        cHeight, cWidth, cEscapement, cOrientation,
+        cWeight, bItalic, bUnderline, bStrikeOut,
+        iCharSet, iOutPrecision, iClipPrecision, iQuality,
+        iPitchAndFamily, g_winoverride_cfg.fontname);
+    else pfn(cHeight, cWidth, cEscapement, cOrientation,
+        cWeight, bItalic, bUnderline, bStrikeOut,
+        iCharSet, iOutPrecision, iClipPrecision, iQuality,
+        iPitchAndFamily, pszFaceName);
+    MINHOOK_LEAVEFUNC(CreateFontA);
+    return hfont;
+}
+
+static HFONT WINAPI CreateFontW_hook(
+    int cHeight,
+    int cWidth,
+    int cEscapement,
+    int cOrientation,
+    int cWeight,
+    DWORD bItalic,
+    DWORD bUnderline,
+    DWORD bStrikeOut,
+    DWORD iCharSet,
+    DWORD iOutPrecision,
+    DWORD iClipPrecision,
+    DWORD iQuality,
+    DWORD iPitchAndFamily,
+    LPCWSTR pszFaceName)
+{
+    MINHOOK_ENTERFUNC(CreateFontW);
+    if (g_winoverride_cfg.createfontcharset) iCharSet = g_winoverride_cfg.createfontcharset;
+    if (g_winoverride_cfg.fontname[0]) pszFaceName = g_winoverride_cfg.fontname;
+    HFONT hfont = pfn(cHeight, cWidth, cEscapement, cOrientation,
+        cWeight, bItalic, bUnderline, bStrikeOut,
+        iCharSet, iOutPrecision, iClipPrecision, iQuality,
+        iPitchAndFamily, pszFaceName);
+    MINHOOK_LEAVEFUNC(CreateFontW);
+    return hfont;
+}
+
+static HFONT WINAPI CreateFontIndirectA_hook(
+    CONST LOGFONTA *lplf)
+{
+    MINHOOK_ENTERFUNC(CreateFontIndirectA);
+    LOGFONTW lfw;
+    memcpy(&lfw, lplf, sizeof(*lplf));
+    HFONT hfont = NULL;
+    T_CreateFontIndirectW pfn2 = CreateFontIndirectW_org;
+    if (g_winoverride_cfg.createfontcharset) lfw.lfCharSet = g_winoverride_cfg.createfontcharset;
+    if (g_winoverride_cfg.fontname[0])
+    {
+        wcscpy(lfw.lfFaceName, g_winoverride_cfg.fontname);
+        hfont = pfn2(&lfw);
+    }
+    else
+    {
+        hfont = pfn((CONST LOGFONTA *)&lfw);
+    }
+    MINHOOK_LEAVEFUNC(CreateFontIndirectA);
+    return hfont;
+}
+
+static HFONT WINAPI CreateFontIndirectW_hook(
+    CONST LOGFONTW *lplf)
+{
+    MINHOOK_ENTERFUNC(CreateFontIndirectW);
+    LOGFONTW lfw;
+    memcpy(&lfw, lplf, sizeof(*lplf));
+    HFONT hfont = NULL;
+    if (g_winoverride_cfg.createfontcharset) lfw.lfCharSet = g_winoverride_cfg.createfontcharset;
+    if (g_winoverride_cfg.fontname[0])
+    {
+        wcscpy(lfw.lfFaceName, g_winoverride_cfg.fontname);
+    }
+    hfont = pfn(&lfw);
+    MINHOOK_LEAVEFUNC(CreateFontIndirectW);
+    return hfont;
+}
+
+static HFONT WINAPI CreateFontIndirectExA_hook(
+    CONST ENUMLOGFONTEXDVA *lplf)
+{
+    MINHOOK_ENTERFUNC(CreateFontIndirectExA);
+    ENUMLOGFONTEXDVW lfw;
+    memcpy(&lfw, lplf, sizeof(*lplf));
+    HFONT hfont = NULL;
+    T_CreateFontIndirectExW pfn2 = CreateFontIndirectExW_org;
+    if (g_winoverride_cfg.createfontcharset) lfw.elfEnumLogfontEx.elfLogFont.lfCharSet = g_winoverride_cfg.createfontcharset;
+    if (g_winoverride_cfg.fontname[0])
+    {
+        wcscpy(lfw.elfEnumLogfontEx.elfLogFont.lfFaceName, g_winoverride_cfg.fontname);
+        hfont = pfn2(&lfw);
+    }
+    else
+    {
+        hfont = pfn((CONST ENUMLOGFONTEXDVA*)&lfw);
+    }
+    MINHOOK_LEAVEFUNC(CreateFontIndirectExA);
+    return hfont;
+}
+
+static HFONT WINAPI CreateFontIndirectExW_hook(
+    CONST ENUMLOGFONTEXDVW *lplf)
+{
+    MINHOOK_ENTERFUNC(CreateFontIndirectExW);
+    ENUMLOGFONTEXDVW lfw;
+    memcpy(&lfw, lplf, sizeof(*lplf));
+    HFONT hfont = NULL;
+    if (g_winoverride_cfg.createfontcharset) lfw.elfEnumLogfontEx.elfLogFont.lfCharSet = g_winoverride_cfg.createfontcharset;
+    if (g_winoverride_cfg.fontname[0])
+    {
+        wcscpy(lfw.elfEnumLogfontEx.elfLogFont.lfFaceName, g_winoverride_cfg.fontname);
+    }
+    hfont = pfn(&lfw);
+    MINHOOK_LEAVEFUNC(CreateFontIndirectExW);
+    return hfont;
+}
+
+static FONTENUMPROCA fontenumproca_org = NULL;
+static FONTENUMPROCW fontenumprocw_org = NULL;
+
+static int CALLBACK fontenumproca_hook(
+    CONST LOGFONTA *lglf,
+    CONST TEXTMETRICA *lpntm,
+    DWORD FontType,
+    LPARAM aFontCount)
+{
+    int res = 0;
+    if (!lglf || !lpntm || !fontenumproca_org) return res;
+    if (g_winoverride_cfg.enumfontcharset)
+    {
+        ((LOGFONTA*)lglf)->lfCharSet = (BYTE)g_winoverride_cfg.enumfontcharset;
+        ((TEXTMETRICA*)lpntm)->tmCharSet = (BYTE)g_winoverride_cfg.enumfontcharset;
+    }
+    res = fontenumproca_org(lglf, lpntm, FontType, aFontCount);
+    return res;
+}
+
+static int CALLBACK fontenumprocw_hook(
+    CONST LOGFONTW *lglf,
+    CONST TEXTMETRICW *lpntm,
+    DWORD FontType,
+    LPARAM aFontCount)
+{
+    int res = 0;
+    if (!lglf || !lpntm || !fontenumprocw_org) return res;
+    if (g_winoverride_cfg.enumfontcharset)
+    {
+        ((LOGFONTW*)lglf)->lfCharSet = (BYTE)g_winoverride_cfg.enumfontcharset;
+        ((TEXTMETRICW*)lpntm)->tmCharSet = (BYTE)g_winoverride_cfg.enumfontcharset;
+    }
+    // LOGLi(L"facename=%ls\n", lglf->lfFaceName);
+    res = fontenumprocw_org(lglf, lpntm, FontType, aFontCount);
+    return res;
+}
+
+static int WINAPI EnumFontsA_hook(
+    HDC hdc,
+    LPCSTR lpLogfont,
+    FONTENUMPROCA lpProc,
+    LPARAM lParam)
+{
+    MINHOOK_ENTERFUNC(EnumFontsA);
+    fontenumproca_org = lpProc;
+    int res = pfn(hdc, lpLogfont, fontenumproca_hook, lParam);
+    MINHOOK_LEAVEFUNC(EnumFontsA);
+    return res;
+}
+
+static int WINAPI EnumFontsW_hook(
+    HDC hdc,
+    LPCWSTR lpLogfont,
+    FONTENUMPROCW lpProc,
+    LPARAM lParam)
+{
+    MINHOOK_ENTERFUNC(EnumFontsW);
+    fontenumprocw_org = lpProc;
+    int res = pfn(hdc, lpLogfont, fontenumprocw_hook, lParam);
+    MINHOOK_LEAVEFUNC(EnumFontsW);
+    return res;
+}
+
+static int WINAPI EnumFontFamiliesA_hook(
+    HDC hdc,
+    LPCSTR lpLogfont,
+    FONTENUMPROCA lpProc,
+    LPARAM lParam)
+{
+    MINHOOK_ENTERFUNC(EnumFontFamiliesA);
+    fontenumproca_org = lpProc;
+    int res = pfn(hdc, lpLogfont, fontenumproca_hook, lParam);
+    MINHOOK_LEAVEFUNC(EnumFontFamiliesA);
+    return res;
+}
+
+static int WINAPI EnumFontFamiliesW_hook(
+    HDC hdc,
+    LPCWSTR lpLogfont,
+    FONTENUMPROCW lpProc,
+    LPARAM lParam)
+{
+    MINHOOK_ENTERFUNC(EnumFontFamiliesW);
+    fontenumprocw_org = lpProc;
+    int res = pfn(hdc, lpLogfont, fontenumprocw_hook, lParam);
+    MINHOOK_LEAVEFUNC(EnumFontFamiliesW);
+    return res;
+}
+
+static int WINAPI EnumFontFamiliesExA_hook(
+    HDC hdc,
+    LPLOGFONTA lpLogfont,
+    FONTENUMPROCA lpProc,
+    LPARAM lParam,DWORD dwFlags)
+{
+    MINHOOK_ENTERFUNC(EnumFontFamiliesExA);
+    fontenumproca_org = lpProc;
+    if (g_winoverride_cfg.createfontcharset) lpLogfont->lfCharSet = g_winoverride_cfg.createfontcharset;
+    int res = pfn(hdc, lpLogfont, fontenumproca_hook, lParam, dwFlags);
+    MINHOOK_LEAVEFUNC(EnumFontFamiliesExA);
+    return res;
+}
+
+static int WINAPI EnumFontFamiliesExW_hook(
+    HDC hdc,
+    LPLOGFONTW lpLogfont,
+    FONTENUMPROCW lpProc,
+    LPARAM lParam,
+    DWORD dwFlags)
+{
+    MINHOOK_ENTERFUNC(EnumFontFamiliesExW);
+    fontenumprocw_org = lpProc;
+    if (g_winoverride_cfg.createfontcharset) lpLogfont->lfCharSet = g_winoverride_cfg.createfontcharset;
+    // LOGLi(L"facename=%ls\n", lpLogfont->lfFaceName);
+    int res = pfn(hdc, lpLogfont, fontenumprocw_hook, lParam, dwFlags);
+    MINHOOK_LEAVEFUNC(EnumFontFamiliesExW);
+    return res;
+}
 #endif
 
 #if 1 // winoverride_patch
@@ -690,8 +972,8 @@ static bool winoverride_readcfg(const char *cfgpath)
     if (!_wcsicmp(k, L"" #name)) wcscpy(cfg->name, v);
     while (fgetws(line, sizeof(line)/2, fp))
     {
-        k = wcstok(line, L"=\n");
-        v = wcstok(NULL, L"=\n");
+        k = wcstok(line, L"=\n\r");
+        v = wcstok(NULL, L"=\n\r");
         LOGLi(L"read config %ls=%ls\n", k, v);
         LOAD_CFG_INT(override_file);
         LOAD_CFG_STR(redirectdir);
@@ -699,7 +981,8 @@ static bool winoverride_readcfg(const char *cfgpath)
         LOAD_CFG_INT(codepage);
         LOAD_CFG_INT(forcecodepage);
         LOAD_CFG_INT(override_font);
-        LOAD_CFG_INT(charset);
+        LOAD_CFG_INT(createfontcharset);
+        LOAD_CFG_INT(enumfontcharset);
         LOAD_CFG_STR(fontname);
         LOAD_CFG_STR(fontpath)
         LOAD_CFG_STR(patch);
@@ -759,7 +1042,24 @@ void winoverride_install(bool init_minhook, const char *cfgpath)
 #ifndef WINOVERRIDE_NOFONT
     if (g_winoverride_cfg.override_font)
     {
-
+        if (g_winoverride_cfg.fontpath[0])
+        {
+            int res = AddFontResourceW(g_winoverride_cfg.fontpath);
+            LOGLi(L"AddFontResourceW %ls res=%d\n", g_winoverride_cfg.fontpath, res);
+        }
+        HMODULE gdi32 = GetModuleHandleA("gdi32.dll");
+        MINHOOK_BINDEXP(gdi32, CreateFontA);
+        MINHOOK_BINDEXP(gdi32, CreateFontW);
+        MINHOOK_BINDEXP(gdi32, CreateFontIndirectA);
+        MINHOOK_BINDEXP(gdi32, CreateFontIndirectW);
+        MINHOOK_BINDEXP(gdi32, CreateFontIndirectExA);
+        MINHOOK_BINDEXP(gdi32, CreateFontIndirectExW);
+        MINHOOK_BINDEXP(gdi32, EnumFontsA);
+        MINHOOK_BINDEXP(gdi32, EnumFontsW);
+        MINHOOK_BINDEXP(gdi32, EnumFontFamiliesA);
+        MINHOOK_BINDEXP(gdi32, EnumFontFamiliesW);
+        MINHOOK_BINDEXP(gdi32, EnumFontFamiliesExA);
+        MINHOOK_BINDEXP(gdi32, EnumFontFamiliesExW);
     }
 #endif
 
@@ -810,7 +1110,23 @@ void winoverride_uninstall(bool uninit_minhook)
 #ifndef WINOVERRIDE_NOFONT
     if (g_winoverride_cfg.override_font)
     {
-
+        if (g_winoverride_cfg.fontpath[0])
+        {
+            int res = RemoveFontResourceW(g_winoverride_cfg.fontpath);
+            LOGLi(L"RemoveFontResourceW %ls res=%d\n", g_winoverride_cfg.fontpath, res);
+        }
+        MINHOOK_UNBIND(CreateFontA);
+        MINHOOK_UNBIND(CreateFontW);
+        MINHOOK_UNBIND(CreateFontIndirectA);
+        MINHOOK_UNBIND(CreateFontIndirectW);
+        MINHOOK_UNBIND(CreateFontIndirectExA);
+        MINHOOK_UNBIND(CreateFontIndirectExW);
+        MINHOOK_UNBIND(EnumFontsA);
+        MINHOOK_UNBIND(EnumFontsW);
+        MINHOOK_UNBIND(EnumFontFamiliesA);
+        MINHOOK_UNBIND(EnumFontFamiliesW);
+        MINHOOK_UNBIND(EnumFontFamiliesExA);
+        MINHOOK_UNBIND(EnumFontFamiliesExW);
     }
 #endif
 
@@ -843,4 +1159,5 @@ void winoverride_uninstall(bool uninit_minhook)
  * v0.1.6, support patch pattern
  * v0.1.7, add WINOVERRIDE_NOFILE, WINOVERRIDE_NOFONT, WINOVERRIDE_NOCODEPAGE
  * v0.1.8, support override codepage
+ * v0.1.9, support override font
  */

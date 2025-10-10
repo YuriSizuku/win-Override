@@ -7,7 +7,7 @@ CC:=gcc # clang (llvm-mingw), gcc (mingw-w64), tcc (x86 stdcall name has problem
 BUILD_TYPE:=32# 32, 32d, 64, 64d
 BUILD_DIR:=build
 INCS:=-Isrc -Idepend/winreverse/src -Idepend/minhookstb/src
-LIBS:=
+LIBS:=-lgdi32
 CFLAGS:=-fPIC -std=gnu99 \
 	-fvisibility=hidden \
 	-ffunction-sections -fdata-sections

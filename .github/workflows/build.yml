@@ -68,15 +68,14 @@ jobs:
       run: |
         chmod +x script/*.sh 
         bash script/build_src.sh
-        cd build
         archive_name=WinOverrideSrc_${{ github.ref_name }}
-        7z a ${archive_name}.7z src
-        7z rn ${archive_name}.7z src ${archive_name}
+        7z a ${archive_name}.7z build/src
+        7z rn ${archive_name}.7z build/src ${archive_name}
 
     - name: create a release
       uses: ncipollo/release-action@v1
       if: github.event_name == 'push'
       with:
-        artifacts: "build/*.7z"
+        artifacts: "*.7z"
         allowUpdates: "true"
         token: ${{ secrets.GITHUB_TOKEN }}
