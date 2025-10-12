@@ -2,14 +2,12 @@
 #include <windows.h>
 
 #define WINVERSION_IMPLEMENTATION
+#define WINVERSION_STATIC
 #define WINOVERRIDE_IMPLEMENTATION
+#define WINOVERRIDE_SHARED
+#define WINDYN_NOINLINE
 #include "winversion.h"
 #include "winoverride.h"
-
-EXPORT void dummy()
-{
-
-}
 
 static void show_info()
 {
@@ -27,13 +25,17 @@ static void show_info()
     #endif
 }
 
-static bool prepare_console()
+static void prepare_console(const char *title)
 {
     FILE *fp = fopen("DEBUG_CONSOLE", "rb");
-    if (!fp) return false;
+    if (!fp) return;
     fclose(fp);
-    
-    // for wprintf 
+
+    AllocConsole();
+    freopen("CONOUT$", "w", stdout);
+    SetConsoleTitleA(title);
+
+    // for wprintf
     UINT codepage = GetACP();
     if (codepage==936)
     {
@@ -45,14 +47,8 @@ static bool prepare_console()
         system("chcp 932");
         setlocale(LC_ALL, "Japanese");
     }
-    
-    // attach console
-    AllocConsole();
-    SetConsoleTitleA("winoverride v" WINOVERRIDE_VERSION ", developed by devseed");
-    freopen("CONOUT$", "w", stdout);
+
     system("pause");
-    
-    return true;
 }
 
 // in win11, build from visual studio might failed, need to copy ucrtbased.dll
@@ -61,7 +57,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
     switch (ul_reason_for_call)
     {
     case DLL_PROCESS_ATTACH:
-        prepare_console();
+        prepare_console("winoverride v" WINOVERRIDE_VERSION ", developed by devseed");
         show_info();
         winversion_install();
         winoverride_install(true, "override\\winoverride.ini");

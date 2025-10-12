@@ -8,6 +8,9 @@
 - override codepage
 - override fonts
 - apply patches and load dll
+- support x86, x64 architecture
+- support winxp, win7, win8, win10, win11, linux wine
+- support tcc, mingw-w64, llvm-mingw, msvc
 
 ## components  
 

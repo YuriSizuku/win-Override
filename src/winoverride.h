@@ -950,7 +950,7 @@ int winoverride_patchpatternw(wchar_t *pattern)
 }
 #endif
 
-static bool winoverride_readcfg(const char *cfgpath)
+static bool winoverride_readconfig(const char *cfgpath)
 {
     struct winoverride_cfg_t *cfg = &g_winoverride_cfg;
     FILE *fp = fopen(cfgpath, "rb");
@@ -974,7 +974,7 @@ static bool winoverride_readcfg(const char *cfgpath)
     {
         k = wcstok(line, L"=\n\r");
         v = wcstok(NULL, L"=\n\r");
-        LOGLi(L"read config %ls=%ls\n", k, v);
+        LOGLi(L"%ls=%ls\n", k, v);
         LOAD_CFG_INT(override_file);
         LOAD_CFG_STR(redirectdir);
         LOAD_CFG_INT(override_codepage);
@@ -1005,7 +1005,7 @@ void winoverride_install(bool init_minhook, const char *cfgpath)
         }
     }
 
-    if (cfgpath) winoverride_readcfg(cfgpath);
+    if (cfgpath) winoverride_readconfig(cfgpath);
 
 #ifndef WINOVERRIDE_NOFILE
     if (g_winoverride_cfg.override_file)
