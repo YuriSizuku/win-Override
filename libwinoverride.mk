@@ -32,7 +32,7 @@ ifdef USEPDB
 CFLAGS+=-gcodeview -Wl,--pdb=$(BUILD_DIR)/libwinoverride.pdb
 endif
 else ifneq (,$(findstring gcc, $(CC))) # for mingw-w64
-LDFLAGS+=-static-libgcc -static-libstdc++ \
+LDFLAGS+=-static-libgcc \
 	-Wl,-Bstatic,--whole-archive -lwinpthread \
 	-Wl,--no-whole-archive
 else ifneq (,$(findstring tcc, $(CC))) # for tcc
