@@ -44,7 +44,10 @@ extern "C" {
 #endif // WINOVERRIDE_API
 
 WINOVERRIDE_API
-size_t winoverride_relpathw(const wchar_t *srcpath, const wchar_t *basepath, wchar_t *relpath);
+bool winoverride_relpathw(const wchar_t *srcpath, const wchar_t *basepath, wchar_t *relpath);
+
+WINOVERRIDE_API
+bool winoverride_filepathw(const HANDLE hfile, wchar_t *path, size_t maxsize);
 
 WINOVERRIDE_API
 int winoverride_patchpatternw(wchar_t *pattern);
@@ -57,6 +60,7 @@ void winoverride_uninstall(bool unint_minhook);
 
 #ifdef WINOVERRIDE_IMPLEMENTATION
 #include <windows.h>
+#include <shlwapi.h>
 
 #ifndef MINHOOK_IMPLEMENTATION
 #define MINHOOK_IMPLEMENTATION
@@ -115,6 +119,7 @@ MINHOOK_DEFINE(NtCreateFile);
 MINHOOK_DEFINE(NtOpenFile);
 MINHOOK_DEFINE(NtCreateSection);
 MINHOOK_DEFINE(NtCreateSectionEx);
+MINHOOK_DEFINE(NtQueryObject);
 MINHOOK_DEFINE(NtQueryAttributesFile);
 MINHOOK_DEFINE(NtQueryFullAttributesFile);
 MINHOOK_DEFINE(NtQueryInformationByName);
@@ -190,7 +195,7 @@ static void _parse_query_fileinfo(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBl
     if (FileHandle)
     {
         GetCurrentDirectoryW(sizeof(cwd), cwd);
-        GetFinalPathNameByHandleW(FileHandle, target, sizeof(target), 0);
+        winoverride_filepathw(FileHandle, target, sizeof(target));
         winoverride_relpathw(target, cwd, rel);
     }
     if (!rel[0]) return;
@@ -397,7 +402,24 @@ static NTSTATUS NTAPI NtCreateSectionEx_hook(
     status  = pfn(SectionHandle, DesiredAccess,
         ObjectAttributes, MaximumSize, SectionPageProtection, AllocationAttributes,
         FileHandle, ExtendedParameters, ExtendedParameterCount);
+    // LOGLi(L"FILE %ls\n", ObjectAttributes->ObjectName->Buffer)
     MINHOOK_LEAVEFUNC(NtCreateSectionEx);
+    return status;
+}
+
+// stub
+static NTSTATUS NTAPI NtQueryObject_hook(
+    IN OPTIONAL HANDLE Handle,
+    IN OBJECT_INFORMATION_CLASS ObjectInformationClass,
+    OUT OPTIONAL PVOID ObjectInformation,
+    IN ULONG ObjectInformationLength,
+    OUT OPTIONAL PULONG ReturnLength)
+{
+    MINHOOK_ENTERFUNC(NtQueryObject);
+    NTSTATUS status = -1;
+    status = pfn(Handle, ObjectInformationClass,
+        ObjectInformation, ObjectInformationLength, ReturnLength);
+    MINHOOK_LEAVEFUNC(NtQueryObject);
     return status;
 }
 
@@ -937,24 +959,27 @@ static int WINAPI EnumFontFamiliesExW_hook(
 #endif
 
 #if 1 // winoverride_patch
-size_t winoverride_relpathw(const wchar_t* srcpath, const wchar_t* basepath, wchar_t* relpath)
+bool winoverride_relpathw(const wchar_t* srcpath, const wchar_t* basepath, wchar_t* relpath)
 {
-    if (!srcpath || !basepath || !relpath) return 0;
+    if (!srcpath || !basepath || !relpath) return false;
 
+    int offset = 0;
     relpath[0] = L'\0';
-    if (wcslen(srcpath) >= 7 && !wcsncmp(srcpath, L"\\Device", 7)) return 0;
-    if (wcslen(srcpath) >= 7 && !wcsncmp(srcpath, L"\\DEVICE", 7)) return 0;
+    if (wcslen(srcpath) >= 7 && !wcsncmp(srcpath, L"\\Device", 7)) return false;
+    if (wcslen(srcpath) >= 7 && !wcsncmp(srcpath, L"\\DEVICE", 7)) return false;
     if (wcslen(srcpath) >= 4 &&
         (!wcsncmp(srcpath, L"\\??\\", 4) || !wcsncmp(srcpath, L"\\\\?\\", 4)))
     {
-        if (StrStrIW(srcpath + 4, basepath)) // use no case-sensitive
-        {
-            wcscpy(relpath, srcpath + 4 + wcslen(basepath));
-        }
+        offset = 4;
+    }
+
+    if (StrStrIW(srcpath + offset, basepath)) // use no case-sensitive
+    {
+        wcscpy(relpath, srcpath + offset + wcslen(basepath));
     }
     else
     {
-        wcscpy(relpath, srcpath);
+        return false;
     }
 
     for (int i = 0; relpath[i]; i++)
@@ -962,13 +987,56 @@ size_t winoverride_relpathw(const wchar_t* srcpath, const wchar_t* basepath, wch
         if (relpath[i] == L'/') relpath[i] = L'\\';
     }
 
-    int offset = 0;
+    offset = 0;
     if (relpath[0] == L'\\') offset = 1;
     else if (relpath[0] == L'.' && relpath[1] == L'\\') offset = 2;
     if (offset > 0) wcsncpy(relpath, relpath + offset, wcslen(relpath) + 1 - offset);
 
-    return wcslen(relpath);
+    return true;
 }
+
+#define NtQueryObject NtQueryObject_org
+bool winoverride_filepathw(const HANDLE hfile, wchar_t *path, size_t maxsize)
+{
+    if (!hfile || !path || maxsize < 8) return false;
+    IO_STATUS_BLOCK iostatus;
+    wchar_t devpathbuf[MAX_PATH], dospathbuf[MAX_PATH];
+    ULONG retsize = 0;
+    POBJECT_NAME_INFORMATION pobjninfo = (POBJECT_NAME_INFORMATION)devpathbuf;
+
+    // query file nt path like \Device\HarddiskVolume1
+    NTSTATUS status = NtQueryObject(hfile, ObjectNameInformation, pobjninfo, sizeof(devpathbuf), &retsize);
+    if (!NT_SUCCESS(status)) return false;
+    PWCHAR szNtPath = pobjninfo->Name.Buffer;
+    pobjninfo->Name.Buffer[pobjninfo->Name.Length / sizeof(WCHAR)] = L'\0';
+   
+    // query driver string
+    WCHAR szDrives[512] = {0}; // C:\\ \0 D:\\ \0 ...
+    if (!GetLogicalDriveStringsW(sizeof(szDrives) / sizeof(WCHAR) - 1, szDrives)) return 0;
+    WCHAR szDrive[3] = L" :";
+    WCHAR szDeviceName[MAX_PATH] = {0};
+    WCHAR *pDrive = szDrives;
+    while (*pDrive) 
+    {
+        szDrive[0] = *pDrive;
+        szDrive[1] = L':';
+        szDrive[2] = L'\0';
+        if (QueryDosDeviceW(szDrive, szDeviceName, MAX_PATH)) 
+        {
+            size_t cchDevName = wcslen(szDeviceName);
+            if (cchDevName > 0 && _wcsnicmp(szNtPath, szDeviceName, cchDevName) == 0) 
+            {
+                if (pobjninfo->Name.Length - (cchDevName - 3) * sizeof(wchar_t) > maxsize) return false;
+                wcscpy(path, szDrive);
+                wcscat(path, szNtPath + cchDevName);
+                return true;
+            }
+        }
+        pDrive += wcslen(pDrive) + 1;
+    }
+    return false;
+}
+#undef NtQueryObject
 
 int winoverride_patchpatternw(wchar_t *pattern)
 {
@@ -1120,6 +1188,7 @@ void winoverride_install(bool init_minhook, const char *cfgpath)
         MINHOOK_BINDEXP(ntdll, NtOpenFile);
         MINHOOK_BINDEXP(ntdll, NtCreateSection);
         MINHOOK_BINDEXP(ntdll, NtCreateSectionEx);
+        MINHOOK_BINDEXP(ntdll, NtQueryObject);
         MINHOOK_BINDEXP(ntdll, NtQueryAttributesFile);
         MINHOOK_BINDEXP(ntdll, NtQueryFullAttributesFile);
         MINHOOK_BINDEXP(ntdll, NtQueryInformationByName);
@@ -1266,7 +1335,7 @@ void winoverride_uninstall(bool uninit_minhook)
  * v0.1.7, add WINOVERRIDE_NOFILE, WINOVERRIDE_NOFONT, WINOVERRIDE_NOCODEPAGE
  * v0.1.8, support override codepage
  * v0.1.9, support override font
- * v0.2, add NtQueryInformationByName,
+ * v0.2, fix _gen_redirect_path with non-zero end path
+ *       add NtQueryInformationByName, NtQueryObject stub, filepathw function
  *       add _parse_query_fileinfo FileBothDirectoryInformation filesize redirect,
- *       fix _gen_redirect_path with non-zero end path
  */

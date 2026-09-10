@@ -1,6 +1,6 @@
 # Override (rePatch)
 
-![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/yurisizuku/win-Override?color=green&label=Override)![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/YuriSizuku/win-Override/build.yml?label=build)  
+![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/yurisizuku/win-Override?color=green&label=Override)![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/YuriSizuku/win-Override/build.yml?label=build)
 
 ☘️ Lightweight and flexible tools for windows game mod (localization).
 
@@ -12,11 +12,11 @@
 - support winxp, win7, win8, win10, win11, linux wine
 - support tcc, mingw-w64, llvm-mingw, msvc
 
-## components  
+## components
 
-`winloader.c`, win loader for loading dll into exe  
-`winversion.h`, single header file for windows version.dll proxy to patch.dll  
-`winoverride.h`, single header file for redircting files to "override" folder  
+`winloader.c`, win loader for loading dll into exe
+`winversion.h`, single header file for windows version.dll proxy to patch.dll
+`winoverride.h`, single header file for redircting files to "override" folder
 
 ## usage
 
@@ -24,15 +24,15 @@
 
 rename `winloader32.exe` or `winloader64.exe` to `xxx_yyy.exe`, and it will automaticly load `xxx.dll`
 
-### winversion  
+### winversion
 
-rename `libwinversion32.dll` or `libwinversion64.dll` to `version.dll`, and it will automaticly load `patch.dll`.  
+rename `libwinversion32.dll` or `libwinversion64.dll` to `version.dll`, and it will automaticly load `patch.dll`.
 
 ### winoverride
 
-load `libwinoverride32.dll` or `libwinoverride64.dll` into target exe either by `winloader` or `winoverride`, and it will automaticly redirect `${pwd}/xxx/yyy` to `${pwd}/override/xxx/yyy` if it exists.  
+load `libwinoverride32.dll` or `libwinoverride64.dll` into target exe either by `winloader` or `winoverride`, and it will automaticly redirect `${pwd}/xxx/yyy` to `${pwd}/override/xxx/yyy` if it exists.
 
-Also these options can be modified in `override/winoverride.ini` and this file should be encoded in `utf16le`.  
+Also these options can be modified in `override/winoverride.ini` and this file should be encoded in `utf16le`.
 
 ```ini
 # enable override files
@@ -82,5 +82,7 @@ msbuild libwinoverride.vcxproj -p:configuration=release -p:Platform=x64
 
 ## issues (including solved)
 
-- [x] unity resources.assets can not be redirect if larger than original file
+- [x] unity resources.assets redirect failed if larger than original file
       caused by `NtQueryFullAttributesFile`
+- [x] d.c.4 Plus redirect failed if larger than original file
+      caused by `NtQueryDirectoryFileEx`, `FileBothDirectoryInformation`
