@@ -1,7 +1,7 @@
 /**
  * single header file for overriding files, codepage and fonts
- *   v0.1.9 developed by devseed
- * 
+ *   v0.2 developed by devseed
+ *
  * macros:
  *    WINOVERRIDE_IMPLEMENTATION, include implements of each function
  *    WINOVERRIDE_SHARED, make function export
@@ -19,7 +19,7 @@
 extern "C" {
 #endif
 
-#define WINOVERRIDE_VERSION "0.1.9"
+#define WINOVERRIDE_VERSION "0.2"
 
 #include <stdbool.h>
 #ifdef USECOMPAT
@@ -37,7 +37,7 @@ extern "C" {
 #endif // WINOVERRIDE_STATIC
 #ifdef WINOVERRIDE_SHARED
 #define WINOVERRIDE_API_EXPORT EXPORT
-#else  
+#else
 #define WINOVERRIDE_API_EXPORT
 #endif // WINOVERRIDE_SHARED
 #define WINOVERRIDE_API WINOVERRIDE_API_DEF WINOVERRIDE_API_EXPORT
@@ -65,7 +65,7 @@ void winoverride_uninstall(bool unint_minhook);
 
 #ifdef USECOMPAT
 #include "stb_minhook_v1_3_4.h"
-#include "windynntdll_v0_1_1.h"
+#include "windynntdll_v0_1_2.h"
 #include "windynkernel32_v0_1_7.h"
 #include "windyngdi32_v0_1.h"
 #else
@@ -110,91 +110,154 @@ static struct winoverride_cfg_t  g_winoverride_cfg = {
 };
 
 #ifndef WINOVERRIDE_NOFILE
+
 MINHOOK_DEFINE(NtCreateFile);
 MINHOOK_DEFINE(NtOpenFile);
 MINHOOK_DEFINE(NtCreateSection);
 MINHOOK_DEFINE(NtCreateSectionEx);
 MINHOOK_DEFINE(NtQueryAttributesFile);
 MINHOOK_DEFINE(NtQueryFullAttributesFile);
+MINHOOK_DEFINE(NtQueryInformationByName);
 MINHOOK_DEFINE(NtQueryInformationFile);
 MINHOOK_DEFINE(NtQueryDirectoryFile);
 MINHOOK_DEFINE(NtQueryDirectoryFileEx);
 
-static BOOL _redirect_path(const POBJECT_ATTRIBUTES ObjectAttributes, wchar_t *rel, wchar_t *target)
+static void* _copy_ustr(wchar_t *target, const PUNICODE_STRING ustr)
 {
-    if(!ObjectAttributes || !ObjectAttributes->ObjectName || !rel || !target) return FALSE;
-    wchar_t cwd[MAX_PATH] = { 0 };
-    GetCurrentDirectoryW(MAX_PATH, cwd);
-    if(winoverride_relpathw(ObjectAttributes->ObjectName->Buffer, cwd, rel))
+    if (!ustr || !target) return NULL;
+    memcpy(target, ustr->Buffer, ustr->Length);
+    target[ustr->Length / sizeof(WCHAR)] = L'\0';
+    return target;
+}
+
+static BOOL _compose_redirect_path(const wchar_t *cwd, const wchar_t *rel, const wchar_t *file, wchar_t *target)
+{
+    if(!cwd || !rel || !target) return FALSE;
+    wcscpy(target, L"\\??\\");
+    if (!wcsstr(g_winoverride_cfg.redirectdir, L":")) // if redirect to absolute path
     {
-        if (wcsstr(ObjectAttributes->ObjectName->Buffer, L"\\??\\"))
-        {
-            wcscpy(target, L"\\??\\");
-            if(!wcsstr(g_winoverride_cfg.redirectdir, L":"))
-            {
-                wcscat(target, cwd);
-                wcscat(target, L"\\");
-            }
-        }
-        wcscat(target, g_winoverride_cfg.redirectdir);
+        wcscat(target, cwd);
         wcscat(target, L"\\");
-        wcscat(target, rel);
-        return TRUE;
+    }
+    wcscat(target, g_winoverride_cfg.redirectdir);
+    wcscat(target, L"\\");
+    wcscat(target, rel);
+    if (file)
+    {
+        wcscat(target, L"\\");
+        wcscat(target, file);
+    }
+    return TRUE;
+}
+
+static BOOL _gen_redirect_path(const POBJECT_ATTRIBUTES objattr, wchar_t *rel, wchar_t *target)
+{
+    if (!objattr || !objattr->ObjectName || !rel || !target) return FALSE;
+    wchar_t cwd[MAX_PATH] = { 0 }, inpath[MAX_PATH] = { 0 };
+
+    // can not be zerocopy, it will not always end up with '\0'
+    _copy_ustr(inpath, objattr->ObjectName);
+    GetCurrentDirectoryW(sizeof(cwd), cwd);
+    if (winoverride_relpathw(inpath, cwd, rel))
+    {
+        return _compose_redirect_path(cwd, rel, NULL, target);
     }
     return FALSE;
 }
 
-static void _parse_query(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
+// only FileBothDirectoryInformation is tested
+static void _parse_query_fileinfo(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
     PVOID FileInformation, ULONG Length, FILE_INFORMATION_CLASS FileInformationClass)
 {
     int i = 0;
     size_t cur = 0;
-    PFILE_FULL_DIR_INFORMATION ffdirinfo = NULL;
-    PFILE_BOTH_DIR_INFORMATION fbdirinfo = NULL;
-    PFILE_STANDARD_INFORMATION fstdinfo = NULL;
-    PFILE_NAME_INFORMATION fnameinfo = NULL;
-    PFILE_ALL_INFORMATION fallinfo = NULL;
+    NTSTATUS status = 0;
+    wchar_t cwd[MAX_PATH] = { 0 }, rel[MAX_PATH] = { 0 },
+            file[MAX_PATH] = { 0 }, target[MAX_PATH] = { 0 };
+    PFILE_NAME_INFORMATION pdirinfo = NULL;
+    PFILE_FULL_DIR_INFORMATION pffdirinfo = NULL;
+    PFILE_BOTH_DIR_INFORMATION pfbdirinfo = NULL;
+    PFILE_STANDARD_INFORMATION pfstdinfo = NULL;
+    PFILE_NAME_INFORMATION pfnameinfo = NULL;
+    PFILE_ALL_INFORMATION pfallinfo = NULL;
+    FILE_NETWORK_OPEN_INFORMATION fnetinfo;
+    OBJECT_ATTRIBUTES objattr = { 0 };
+    UNICODE_STRING objname = { .Buffer=target, .Length=0, .MaximumLength=sizeof(cwd)};
+    objattr.Length = sizeof(OBJECT_ATTRIBUTES);
+    objattr.ObjectName = &objname;
 
+    if (!NT_SUCCESS(IoStatusBlock->Status)) return;
+    if (FileHandle)
+    {
+        GetCurrentDirectoryW(sizeof(cwd), cwd);
+        GetFinalPathNameByHandleW(FileHandle, target, sizeof(target), 0);
+        winoverride_relpathw(target, cwd, rel);
+    }
+    if (!rel[0]) return;
+
+    LOGLi(L"DIR %ls handle=%p\n", rel, FileHandle);
     switch ((int)FileInformationClass)
     {
-    case 2: // FileFullDirectoryInformation (2)
+    case 2: // FileFullDirectoryInformation
         do
         {
-            ffdirinfo = (PFILE_FULL_DIR_INFORMATION)((size_t)FileInformation + cur);
-            // LOGLi(L"FileFullDirectoryInformation %d %ls\n", i, ffdirinfo->FileName);
-            cur += ffdirinfo->NextEntryOffset;
+            pffdirinfo = (PFILE_FULL_DIR_INFORMATION)((size_t)FileInformation + cur);
+            memcpy(file, pffdirinfo->FileName, pffdirinfo->FileNameLength);
+            file[pffdirinfo->FileNameLength / 2] = L'\0';
+            LOGLi(L"FileFullDirectoryInformation FILE%d %ls\n", i, file);
+            _compose_redirect_path(cwd, rel, file, objname.Buffer);
+            objname.Length = wcslen(objname.Buffer) * sizeof(WCHAR);
+            status = NtQueryFullAttributesFile_org(&objattr, &fnetinfo);
+            if (NT_SUCCESS(status))
+            {
+                pffdirinfo->EndOfFile = fnetinfo.EndOfFile;
+                LOGLi(L"REDIRECT %ls\\%ls size=0x%llx\n", rel, file, fnetinfo.EndOfFile.QuadPart);
+            }
+            
+            cur += pffdirinfo->NextEntryOffset;
             i++;
-        } while (ffdirinfo->NextEntryOffset && cur < Length);
+        } while (pffdirinfo->NextEntryOffset && cur < Length);
         break;
-    case 3: // FileBothDirectoryInformation (3)
+    case 3: // FileBothDirectoryInformation, query file size might here
         do
         {
-            fbdirinfo = (PFILE_BOTH_DIR_INFORMATION)((size_t)FileInformation + cur);
-            // LOGLi(L"FileBothDirectoryInformation %d %ls\n", i, fbdirinfo->FileName);
-            cur += fbdirinfo->NextEntryOffset;
+            pfbdirinfo = (PFILE_BOTH_DIR_INFORMATION)((size_t)FileInformation + cur);
+            memcpy(file, pfbdirinfo->FileName, pfbdirinfo->FileNameLength);
+            file[pfbdirinfo->FileNameLength / 2] = L'\0';
+            LOGLi(L"FileBothDirectoryInformation FILE%d %ls\n", i, file);
+            _compose_redirect_path(cwd, rel, file, objname.Buffer);
+            objname.Length = wcslen(objname.Buffer) * sizeof(WCHAR);
+            status = NtQueryFullAttributesFile_org(&objattr, &fnetinfo);
+            if (NT_SUCCESS(status))
+            {
+                pfbdirinfo->EndOfFile = fnetinfo.EndOfFile;
+                LOGLi(L"REDIRECT %ls\\%ls size=0x%llx\n", rel, file, fnetinfo.EndOfFile.QuadPart);
+            }
+
+            cur += pfbdirinfo->NextEntryOffset;
             i++;
-        } while (fbdirinfo->NextEntryOffset && cur < Length);
+        } while (pfbdirinfo->NextEntryOffset && cur < Length);
         break;
-    case 5: // FileStandardInformation (5)
-        fstdinfo = (PFILE_STANDARD_INFORMATION)FileInformation;
+    case 5: // FileStandardInformation
+        pfstdinfo = (PFILE_STANDARD_INFORMATION)FileInformation;
         break;
-    case 9: // FileNameInformation (9)
+    case 9: // FileNameInformation
     case 48: // FileNormalizedNameInformation
-        fnameinfo = (PFILE_NAME_INFORMATION)FileInformation;
+        pfnameinfo = (PFILE_NAME_INFORMATION)FileInformation;
         break;
-    case 14: // FilePositionInformation (14)
+    case 14: // FilePositionInformation
         break;
-    case 18: // FileAllInformation (18)
-        fallinfo = (PFILE_ALL_INFORMATION)FileInformation;
+    case 18: // FileAllInformation
+        pfallinfo = (PFILE_ALL_INFORMATION)FileInformation;
         break;
-    case 68: // FileStatInformation (68)
+    case 68: // FileStatInformation
         break;
     default:
         break;
     }
 }
 
-static NTSTATUS NTAPI NtCreateFile_hook( 
+static NTSTATUS NTAPI NtCreateFile_hook(
     OUT PHANDLE FileHandle,
     IN ACCESS_MASK DesiredAccess,
     IN POBJECT_ATTRIBUTES ObjectAttributes,
@@ -212,14 +275,14 @@ static NTSTATUS NTAPI NtCreateFile_hook(
     BOOL flag_redirect = FALSE;
     wchar_t rel[MAX_PATH] = { 0 }, target[MAX_PATH] = { 0 };
 
-    if(CreateOptions & FILE_DIRECTORY_FILE) // if dir
+    if (CreateOptions & FILE_DIRECTORY_FILE) // if dir
     {
         goto NtCreateFile_hook_end;
     }
 
     if ((DesiredAccess & FILE_GENERIC_READ) || (DesiredAccess & FILE_GENERIC_EXECUTE))
     {
-        if(!_redirect_path(ObjectAttributes, rel, target)) goto NtCreateFile_hook_end;
+        if (!_gen_redirect_path(ObjectAttributes, rel, target)) goto NtCreateFile_hook_end;
         PUNICODE_STRING pustrorg = ObjectAttributes->ObjectName;
         UNICODE_STRING ustr = {(USHORT)wcslen(target) * 2, sizeof(target), target};
         ObjectAttributes->ObjectName = &ustr;
@@ -232,7 +295,7 @@ static NTSTATUS NTAPI NtCreateFile_hook(
         if (NT_SUCCESS(status))
         {
             flag_redirect = TRUE;
-            LOGLi(L"REDIRECT %ls handle=%p\n", rel, *FileHandle);
+            LOGLi(L"REDIRECT %ls handle=%p status=%ld\n", rel, *FileHandle, status);
         }
     }
 
@@ -243,7 +306,7 @@ NtCreateFile_hook_end:
             ObjectAttributes, IoStatusBlock, AllocationSize,
             FileAttributes, ShareAccess, CreateDisposition,
             CreateOptions, EaBuffer, EaLength);
-        if(rel[0]) LOGLi(L"FILE %ls %ld\n", rel, status);
+        if (rel[0]) LOGLi(L"FILE %ls handle=%p status=%lx\n", rel, *FileHandle, status);
     }
 
     MINHOOK_LEAVEFUNC(NtCreateFile);
@@ -265,39 +328,39 @@ static NTSTATUS NTAPI NtOpenFile_hook(
 
     if (OpenOptions & FILE_DIRECTORY_FILE) // if dir
     {
-		goto NtOpenFile_hook_end;
+        goto NtOpenFile_hook_end;
     }
 
     if ((DesiredAccess & FILE_GENERIC_READ) || (DesiredAccess & FILE_GENERIC_EXECUTE))
     {
-        if (!_redirect_path(ObjectAttributes, rel, target)) goto NtOpenFile_hook_end;
+        if (!_gen_redirect_path(ObjectAttributes, rel, target)) goto NtOpenFile_hook_end;
         PUNICODE_STRING pustrorg = ObjectAttributes->ObjectName;
         UNICODE_STRING ustr = { (USHORT)wcslen(target) * 2, sizeof(target), target };
         ObjectAttributes->ObjectName = &ustr;
-        status = pfn(FileHandle, DesiredAccess,
-            ObjectAttributes, IoStatusBlock, ShareAccess, OpenOptions);
+        status = pfn(FileHandle, DesiredAccess, ObjectAttributes,
+            IoStatusBlock, ShareAccess, OpenOptions);
         ObjectAttributes->ObjectName = pustrorg;
 
         if (NT_SUCCESS(status))
         {
             flag_redirect = TRUE;
-            LOGLi(L"REDIRECT %ls handle=%p\n", rel, *FileHandle);
+            LOGLi(L"REDIRECT %ls handle=%p status=%lx\n", rel, *FileHandle, status);
         }
     }
 
 NtOpenFile_hook_end:
     if (!flag_redirect)
     {
-        status = pfn(FileHandle, DesiredAccess,
-            ObjectAttributes, IoStatusBlock, ShareAccess, OpenOptions);
-        if (rel[0]) LOGLi(L"FILE %ls %ld\n", rel, status);
+        status = pfn(FileHandle, DesiredAccess, ObjectAttributes,
+            IoStatusBlock, ShareAccess, OpenOptions);
+        if (rel[0]) LOGLi(L"FILE %ls handle=%p status=%lx\n", rel, *FileHandle, status);
     }
 
     MINHOOK_LEAVEFUNC(NtOpenFile);
     return status;
 }
 
-// might not used for check file
+// stub
 static NTSTATUS NTAPI NtCreateSection_hook(
     OUT PHANDLE SectionHandle,
     IN ACCESS_MASK DesiredAccess,
@@ -312,10 +375,12 @@ static NTSTATUS NTAPI NtCreateSection_hook(
     status = pfn(SectionHandle, DesiredAccess,
         ObjectAttributes, MaximumSize, SectionPageProtection,
         AllocationAttributes, FileHandle);
+    // LOGLi(L"FILE %ls\n", ObjectAttributes->ObjectName->Buffer)
     MINHOOK_LEAVEFUNC(NtCreateSection);
     return status;
 }
 
+// stub
 static NTSTATUS NTAPI NtCreateSectionEx_hook(
     OUT PHANDLE SectionHandle,
     IN ACCESS_MASK DesiredAccess,
@@ -330,34 +395,36 @@ static NTSTATUS NTAPI NtCreateSectionEx_hook(
     MINHOOK_ENTERFUNC(NtCreateSectionEx);
     NTSTATUS status = -1;
     status  = pfn(SectionHandle, DesiredAccess,
-        ObjectAttributes, MaximumSize, SectionPageProtection, AllocationAttributes, 
+        ObjectAttributes, MaximumSize, SectionPageProtection, AllocationAttributes,
         FileHandle, ExtendedParameters, ExtendedParameterCount);
     MINHOOK_LEAVEFUNC(NtCreateSectionEx);
     return status;
 }
 
+// stub
 static NTSTATUS NTAPI NtQueryAttributesFile_hook(
-    IN POBJECT_ATTRIBUTES   ObjectAttributes,
+    IN POBJECT_ATTRIBUTES ObjectAttributes,
     OUT PFILE_BASIC_INFORMATION FileAttributes)
 {
     MINHOOK_ENTERFUNC(NtQueryAttributesFile);
     NTSTATUS status = -1;
     status = pfn(ObjectAttributes, FileAttributes);
+    // LOGLi(L"FILE %ls\n", ObjectAttributes->ObjectName->Buffer)
     MINHOOK_LEAVEFUNC(NtQueryAttributesFile);
     return status;
 }
 
-// this function is important for file size
+// important for file size
 static NTSTATUS NTAPI NtQueryFullAttributesFile_hook(
-    IN POBJECT_ATTRIBUTES   ObjectAttributes,
-    OUT PFILE_NETWORK_OPEN_INFORMATION  FileInformation)
+    IN POBJECT_ATTRIBUTES ObjectAttributes,
+    OUT PFILE_NETWORK_OPEN_INFORMATION FileInformation)
 {
     MINHOOK_ENTERFUNC(NtQueryFullAttributesFile);
     NTSTATUS status = -1;
     BOOL flag_redirect = FALSE;
     wchar_t rel[MAX_PATH] = { 0 }, target[MAX_PATH] = { 0 };
 
-    if (!_redirect_path(ObjectAttributes, rel, target)) goto NtQueryFullAttributesFile_hook_end;
+    if (!_gen_redirect_path(ObjectAttributes, rel, target)) goto NtQueryFullAttributesFile_hook_end;
     PUNICODE_STRING pustrorg = ObjectAttributes->ObjectName;
     UNICODE_STRING ustr = { (USHORT)wcslen(target) * 2, sizeof(target), target };
     ObjectAttributes->ObjectName = &ustr;
@@ -367,21 +434,58 @@ static NTSTATUS NTAPI NtQueryFullAttributesFile_hook(
     if (NT_SUCCESS(status))
     {
         flag_redirect = TRUE;
-        LOGLi(L"REDIRECT %ls size=0x%llx\n", rel, FileInformation->EndOfFile.QuadPart);
+        LOGLi(L"REDIRECT %ls size=0x%llx status=%lx\n", rel, FileInformation->EndOfFile.QuadPart, status);
     }
 
 NtQueryFullAttributesFile_hook_end:
-    if(!flag_redirect)
+    if (!flag_redirect)
     {
         status = pfn(ObjectAttributes, FileInformation);
-        if (rel[0] && NT_SUCCESS(status)) LOGLi(L"FILE %ls size=0x%llx\n", rel, FileInformation->EndOfFile.QuadPart);
+        if (rel[0]) LOGLi(L"FILE %ls size=0x%llx status=%lx\n", rel, FileInformation->EndOfFile.QuadPart, status);
     }
 
     MINHOOK_LEAVEFUNC(NtQueryFullAttributesFile);
     return status;
 }
 
-// might not need to redirect
+// might not use
+static NTSTATUS NTAPI NtQueryInformationByName_hook(
+    IN POBJECT_ATTRIBUTES ObjectAttributes,
+    OUT PIO_STATUS_BLOCK IoStatusBlock,
+    OUT PVOID FileInformation,
+    IN ULONG Length,
+    IN FILE_INFORMATION_CLASS FileInformationClass)
+{
+    MINHOOK_ENTERFUNC(NtQueryInformationByName);
+    NTSTATUS status = -1;
+    BOOL flag_redirect = FALSE;
+    wchar_t rel[MAX_PATH] = { 0 }, target[MAX_PATH] = { 0 };
+
+    if (!_gen_redirect_path(ObjectAttributes, rel, target)) goto NtQueryInformationByName_hook_end;
+    PUNICODE_STRING pustrorg = ObjectAttributes->ObjectName;
+    UNICODE_STRING ustr = { (USHORT)wcslen(target) * 2, sizeof(target), target };
+    ObjectAttributes->ObjectName = &ustr;
+    status = pfn(ObjectAttributes, IoStatusBlock, FileInformation, Length, FileInformationClass);
+    ObjectAttributes->ObjectName = pustrorg;
+
+    if (NT_SUCCESS(status))
+    {
+        flag_redirect = TRUE;
+        LOGLi(L"REDIRECT %ls class=%d status=%lx\n", rel, (int)FileInformationClass, status);
+    }
+
+NtQueryInformationByName_hook_end:
+    if (!flag_redirect)
+    {
+        status = pfn(ObjectAttributes, IoStatusBlock, FileInformation, Length, FileInformationClass);
+        if (rel[0]) LOGLi(L"REDIRECT %ls class=%d status=%lx\n", rel, (int)FileInformationClass, status);
+    }
+
+    MINHOOK_LEAVEFUNC(NtQueryInformationByName);
+    return status;
+}
+
+// stub
 static NTSTATUS NTAPI NtQueryInformationFile_hook(
     IN HANDLE FileHandle,
     OUT PIO_STATUS_BLOCK IoStatusBlock,
@@ -392,8 +496,8 @@ static NTSTATUS NTAPI NtQueryInformationFile_hook(
     MINHOOK_ENTERFUNC(NtQueryInformationFile);
     NTSTATUS status = -1;
     status = pfn(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
-    // LOGLi(L"handle=%p %d\n", FileHandle, FileInformationClass);
-    _parse_query(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
+    // LOGLi(L"handle=%p class=%d\n", FileHandle, FileInformationClass);
+    // _parse_query_fileinfo(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
     MINHOOK_LEAVEFUNC(NtQueryInformationFile);
     return status;
 }
@@ -417,12 +521,13 @@ static NTSTATUS NTAPI NtQueryDirectoryFile_hook(
         ApcRoutine, ApcContext, IoStatusBlock,
         FileInformation, Length, FileInformationClass,
         ReturnSingleEntry, FileName, RestartScan);
-    // LOGLi(L"handle=%p %d\n", FileHandle, FileInformationClass);
-    _parse_query(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
+    LOGLi(L"handle=%p class=%d\n", FileHandle, FileInformationClass);
+    _parse_query_fileinfo(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
     MINHOOK_LEAVEFUNC(NtQueryDirectoryFile);
     return status;
 }
 
+// it will query file size in a directory
 static NTSTATUS NTAPI NtQueryDirectoryFileEx_hook(
     IN HANDLE FileHandle,
     IN HANDLE Event,
@@ -440,8 +545,8 @@ static NTSTATUS NTAPI NtQueryDirectoryFileEx_hook(
     status = pfn(FileHandle, Event, ApcRoutine, ApcContext,
         IoStatusBlock, FileInformation, Length,
         FileInformationClass, QueryFlags, FileName);
-    // LOGLi(L"handle=%p %d\n", FileHandle, FileInformationClass);
-    _parse_query(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
+    LOGLi(L"handle=%p class=%d\n", FileHandle, FileInformationClass);
+    _parse_query_fileinfo(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
     MINHOOK_LEAVEFUNC(NtQueryDirectoryFileEx);
     return status;
 }
@@ -459,36 +564,36 @@ MINHOOK_DEFINE(IsDBCSLeadByte);
 MINHOOK_DEFINE(IsDBCSLeadByteEx);
 
 static int WINAPI MultiByteToWideChar_hook(
-    UINT CodePage, 
-    DWORD dwFlags, 
-    LPCCH lpMultiByteStr, 
-    int cbMultiByte, 
-    LPWSTR lpWideCharStr, 
+    UINT CodePage,
+    DWORD dwFlags,
+    LPCCH lpMultiByteStr,
+    int cbMultiByte,
+    LPWSTR lpWideCharStr,
     int cchWideChar)
 {
     MINHOOK_ENTERFUNC(MultiByteToWideChar);
     if (g_winoverride_cfg.forcecodepage) CodePage = g_winoverride_cfg.codepage;
     else if (CodePage == CP_ACP) CodePage = g_winoverride_cfg.codepage;
-    int res = pfn(CodePage, dwFlags, 
+    int res = pfn(CodePage, dwFlags,
         lpMultiByteStr, cbMultiByte, lpWideCharStr, cchWideChar);
     MINHOOK_LEAVEFUNC(MultiByteToWideChar);
     return res;
 }
 
 static int WINAPI WideCharToMultiByte_hook(
-    UINT CodePage, 
-    DWORD dwFlags, 
-    LPCWCH lpWideCharStr, 
-    int cchWideChar, 
-    LPSTR lpMultiByteStr, 
-    int cbMultiByte, 
-    LPCCH lpDefaultChar, 
+    UINT CodePage,
+    DWORD dwFlags,
+    LPCWCH lpWideCharStr,
+    int cchWideChar,
+    LPSTR lpMultiByteStr,
+    int cbMultiByte,
+    LPCCH lpDefaultChar,
     LPBOOL lpUsedDefaultChar)
 {
     MINHOOK_ENTERFUNC(WideCharToMultiByte);
     if (g_winoverride_cfg.forcecodepage) CodePage = g_winoverride_cfg.codepage;
     else if (CodePage == CP_ACP) CodePage = g_winoverride_cfg.codepage;
-    int res = pfn(CodePage, dwFlags, lpWideCharStr, cchWideChar, 
+    int res = pfn(CodePage, dwFlags, lpWideCharStr, cchWideChar,
         lpMultiByteStr, cbMultiByte, lpDefaultChar, lpUsedDefaultChar);
     MINHOOK_LEAVEFUNC(WideCharToMultiByte);
     return res;
@@ -500,8 +605,8 @@ static UINT WINAPI GetACP_hook(void)
     UINT res = pfn();
     if (g_winoverride_cfg.codepage) res =  g_winoverride_cfg.codepage;
     MINHOOK_LEAVEFUNC(GetACP);
-    return res; 
-}   
+    return res;
+}
 
 static UINT WINAPI GetOEMCP_hook(void)
 {
@@ -837,12 +942,12 @@ size_t winoverride_relpathw(const wchar_t* srcpath, const wchar_t* basepath, wch
     if (!srcpath || !basepath || !relpath) return 0;
 
     relpath[0] = L'\0';
-    if (wcslen(srcpath) >= 7 && wcsncmp(srcpath, L"\\Device", 7) == 0) return 0;
-    if (wcslen(srcpath) >= 7 && wcsncmp(srcpath, L"\\DEVICE", 7) == 0) return 0;
-    if (wcslen(srcpath) >= 4 && wcsncmp(srcpath, L"\\??\\", 4) == 0) // nt global path
+    if (wcslen(srcpath) >= 7 && !wcsncmp(srcpath, L"\\Device", 7)) return 0;
+    if (wcslen(srcpath) >= 7 && !wcsncmp(srcpath, L"\\DEVICE", 7)) return 0;
+    if (wcslen(srcpath) >= 4 &&
+        (!wcsncmp(srcpath, L"\\??\\", 4) || !wcsncmp(srcpath, L"\\\\?\\", 4)))
     {
-
-        if (wcsstr(srcpath + 4, basepath))
+        if (StrStrIW(srcpath + 4, basepath)) // use no case-sensitive
         {
             wcscpy(relpath, srcpath + 4 + wcslen(basepath));
         }
@@ -899,7 +1004,7 @@ int winoverride_patchpatternw(wchar_t *pattern)
         for (; pattern[i] != L':' && i<patternlen; i++)
         {
             char c = (char)pattern[i];
-            if(c>='0' && c<='9') c -= '0';
+            if (c>='0' && c<='9') c -= '0';
             else if (c>='A' && c<='Z') c = c -'A' + 10;
             else if (c>='a' && c<='z') c = c -'a' + 10;
             else if (c=='\r' || c=='\n') {flag_nextline=1;break;}
@@ -907,8 +1012,8 @@ int winoverride_patchpatternw(wchar_t *pattern)
             else return -2;
             addr = (addr<<4) + c;
         }
-        if(flag_nextline) continue;
-        if(flag_rel) addr += imagebase;
+        if (flag_nextline) continue;
+        if (flag_rel) addr += imagebase;
 
         int n = 0;
         int v = 0;
@@ -936,7 +1041,7 @@ int winoverride_patchpatternw(wchar_t *pattern)
                     }
                 }
             }
-            if(n&1) return -3;
+            if (n&1) return -3;
             if (j == 0)
             {
                 i = start;
@@ -964,7 +1069,7 @@ static bool winoverride_readconfig(const char *cfgpath)
     wchar_t *k = NULL;
     wchar_t *v = NULL;
     fread(line, 2, 1, fp); // skip bom
-    if(line[0] != 0xfeff) fseek(fp, 0, SEEK_SET);
+    if (line[0] != 0xfeff) fseek(fp, 0, SEEK_SET);
 
 #define LOAD_CFG_INT(name) \
     if (!_wcsicmp(k, L"" #name)) cfg->name = _wtoi(v);
@@ -1017,6 +1122,7 @@ void winoverride_install(bool init_minhook, const char *cfgpath)
         MINHOOK_BINDEXP(ntdll, NtCreateSectionEx);
         MINHOOK_BINDEXP(ntdll, NtQueryAttributesFile);
         MINHOOK_BINDEXP(ntdll, NtQueryFullAttributesFile);
+        MINHOOK_BINDEXP(ntdll, NtQueryInformationByName);
         MINHOOK_BINDEXP(ntdll, NtQueryInformationFile);
         MINHOOK_BINDEXP(ntdll, NtQueryDirectoryFile);
         MINHOOK_BINDEXP(ntdll, NtQueryDirectoryFileEx);
@@ -1133,7 +1239,7 @@ void winoverride_uninstall(bool uninit_minhook)
     if (uninit_minhook)
     {
         MH_STATUS status = MH_Uninitialize();
-        if(status != MH_OK)
+        if (status != MH_OK)
         {
             LOGe("MH_Initialize failed with %s\n", MH_StatusToString(status));
         }
@@ -1160,4 +1266,7 @@ void winoverride_uninstall(bool uninit_minhook)
  * v0.1.7, add WINOVERRIDE_NOFILE, WINOVERRIDE_NOFONT, WINOVERRIDE_NOCODEPAGE
  * v0.1.8, support override codepage
  * v0.1.9, support override font
+ * v0.2, add NtQueryInformationByName,
+ *       add _parse_query_fileinfo FileBothDirectoryInformation filesize redirect,
+ *       fix _gen_redirect_path with non-zero end path
  */
