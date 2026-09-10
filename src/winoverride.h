@@ -211,7 +211,7 @@ static void _parse_query_fileinfo(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBl
             file[pffdirinfo->FileNameLength / 2] = L'\0';
             LOGLi(L"FileFullDirectoryInformation FILE%d %ls\n", i, file);
             _compose_redirect_path(cwd, rel, file, objname.Buffer);
-            objname.Length = wcslen(objname.Buffer) * sizeof(WCHAR);
+            objname.Length = (USHORT)(wcslen(objname.Buffer) * sizeof(WCHAR));
             status = NtQueryFullAttributesFile_org(&objattr, &fnetinfo);
             if (NT_SUCCESS(status))
             {
@@ -231,7 +231,7 @@ static void _parse_query_fileinfo(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBl
             file[pfbdirinfo->FileNameLength / 2] = L'\0';
             LOGLi(L"FileBothDirectoryInformation FILE%d %ls\n", i, file);
             _compose_redirect_path(cwd, rel, file, objname.Buffer);
-            objname.Length = wcslen(objname.Buffer) * sizeof(WCHAR);
+            objname.Length = (USHORT)(wcslen(objname.Buffer) * sizeof(WCHAR));
             status = NtQueryFullAttributesFile_org(&objattr, &fnetinfo);
             if (NT_SUCCESS(status))
             {
@@ -999,13 +999,12 @@ bool winoverride_relpathw(const wchar_t* srcpath, const wchar_t* basepath, wchar
 bool winoverride_filepathw(const HANDLE hfile, wchar_t *path, size_t maxsize)
 {
     if (!hfile || !path || maxsize < 8) return false;
-    IO_STATUS_BLOCK iostatus;
-    wchar_t devpathbuf[MAX_PATH], dospathbuf[MAX_PATH];
+    wchar_t ntpathbuf[MAX_PATH];
     ULONG retsize = 0;
-    POBJECT_NAME_INFORMATION pobjninfo = (POBJECT_NAME_INFORMATION)devpathbuf;
+    POBJECT_NAME_INFORMATION pobjninfo = (POBJECT_NAME_INFORMATION)ntpathbuf;
 
-    // query file nt path like \Device\HarddiskVolume1
-    NTSTATUS status = NtQueryObject(hfile, ObjectNameInformation, pobjninfo, sizeof(devpathbuf), &retsize);
+    // query file nt path like \Device\HarddiskVolume1, ObjectNameInformation
+    NTSTATUS status = NtQueryObject(hfile, 1, pobjninfo, sizeof(ntpathbuf), &retsize);
     if (!NT_SUCCESS(status)) return false;
     PWCHAR szNtPath = pobjninfo->Name.Buffer;
     pobjninfo->Name.Buffer[pobjninfo->Name.Length / sizeof(WCHAR)] = L'\0';

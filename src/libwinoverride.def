@@ -18,6 +18,7 @@ EXPORTS
     VerQueryValueA = __wrap_VerQueryValueA
     VerQueryValueW = __wrap_VerQueryValueW
     winoverride_relpathw
+    winoverride_filepathw
     winoverride_patchpatternw
     winoverride_install
     winoverride_uninstall
