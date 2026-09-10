@@ -1,17 +1,17 @@
 name: build_wintools
 on:
   push: {tags:  ['v*'] } # Push events to matching v*, i.e. v1.0, v20.15.10
-  pull_request: 
+  pull_request:
 
 permissions:
   contents: write
-  
+
 jobs:
   build_wintools:
-    runs-on: windows-2025
+    runs-on: windows-2022
     strategy:
-      matrix: 
-        project: 
+      matrix:
+        project:
           - {targetname: winloader, targetext: exe}
           - {targetname: libwinversion, targetext: dll}
           - {targetname: libwinoverride, targetext: dll}
@@ -19,10 +19,13 @@ jobs:
     - name: pull and init
       uses: actions/checkout@v3
       with: {submodules: true}
-    
+
     - name: add msbuild to path
       uses: microsoft/setup-msbuild@v1.1
-    
+
+    - name: Checkout code
+      uses: actions/checkout@v4
+
     - name: prepare enviroment
       run: |
         Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
@@ -44,7 +47,7 @@ jobs:
       run: |
         msbuild ${{ matrix.project.targetname }}.vcxproj -p:configuration=release -p:Platform=x86
         msbuild ${{ matrix.project.targetname }}.vcxproj -p:configuration=release -p:Platform=x64
-    
+
     - name: upload release
       uses: ncipollo/release-action@v1
       if: github.event_name == 'push'
@@ -66,7 +69,7 @@ jobs:
 
     - name: build pysrc
       run: |
-        chmod +x script/*.sh 
+        chmod +x script/*.sh
         bash script/build_src.sh
         archive_name=WinOverrideSrc_${{ github.ref_name }}
         7z a ${archive_name}.7z build/src
