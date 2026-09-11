@@ -1,6 +1,6 @@
 /**
  * single header file for overriding files, codepage and fonts
- *   v0.2 developed by devseed
+ *   v0.2.1 developed by devseed
  *
  * macros:
  *    WINOVERRIDE_IMPLEMENTATION, include implements of each function
@@ -19,7 +19,7 @@
 extern "C" {
 #endif
 
-#define WINOVERRIDE_VERSION "0.2"
+#define WINOVERRIDE_VERSION "0.2.1"
 
 #include <stdbool.h>
 #ifdef USECOMPAT
@@ -61,7 +61,6 @@ void winoverride_uninstall(bool unint_minhook);
 #ifdef WINOVERRIDE_IMPLEMENTATION
 #include <windows.h>
 #include <shlwapi.h>
-
 #ifndef MINHOOK_IMPLEMENTATION
 #define MINHOOK_IMPLEMENTATION
 #define MINHOOK_STATIC
@@ -198,6 +197,7 @@ static void _parse_query_fileinfo(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBl
         winoverride_filepathw(FileHandle, target, sizeof(target));
         winoverride_relpathw(target, cwd, rel);
     }
+    // LOGLi(L"cwd=%ls target=%ls rel=%ls\n", cwd, target, rel);
     if (!rel[0]) return;
 
     LOGLi(L"DIR %ls handle=%p\n", rel, FileHandle);
@@ -218,7 +218,7 @@ static void _parse_query_fileinfo(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBl
                 pffdirinfo->EndOfFile = fnetinfo.EndOfFile;
                 LOGLi(L"REDIRECT %ls\\%ls size=0x%llx\n", rel, file, fnetinfo.EndOfFile.QuadPart);
             }
-            
+
             cur += pffdirinfo->NextEntryOffset;
             i++;
         } while (pffdirinfo->NextEntryOffset && cur < Length);
@@ -999,39 +999,48 @@ bool winoverride_relpathw(const wchar_t* srcpath, const wchar_t* basepath, wchar
 bool winoverride_filepathw(const HANDLE hfile, wchar_t *path, size_t maxsize)
 {
     if (!hfile || !path || maxsize < 8) return false;
-    wchar_t ntpathbuf[MAX_PATH];
+    ULONG ntpathbuf[MAX_PATH / 2]; // must be aligned in xp, or it will be 0x80000002
     ULONG retsize = 0;
     POBJECT_NAME_INFORMATION pobjninfo = (POBJECT_NAME_INFORMATION)ntpathbuf;
 
     // query file nt path like \Device\HarddiskVolume1, ObjectNameInformation
     NTSTATUS status = NtQueryObject(hfile, 1, pobjninfo, sizeof(ntpathbuf), &retsize);
     if (!NT_SUCCESS(status)) return false;
-    PWCHAR szNtPath = pobjninfo->Name.Buffer;
+    PWCHAR ntpath = pobjninfo->Name.Buffer;
     pobjninfo->Name.Buffer[pobjninfo->Name.Length / sizeof(WCHAR)] = L'\0';
-   
+
     // query driver string
-    WCHAR szDrives[512] = {0}; // C:\\ \0 D:\\ \0 ...
-    if (!GetLogicalDriveStringsW(sizeof(szDrives) / sizeof(WCHAR) - 1, szDrives)) return 0;
-    WCHAR szDrive[3] = L" :";
-    WCHAR szDeviceName[MAX_PATH] = {0};
-    WCHAR *pDrive = szDrives;
-    while (*pDrive) 
+    WCHAR drives[512] = {0}; // C:\\ \0 D:\\ \0 ...
+    if (!GetLogicalDriveStringsW(sizeof(drives) / sizeof(WCHAR) - 1, drives)) return 0;
+    WCHAR drive[3] = L" :";
+    WCHAR devname[MAX_PATH] = {0};
+    WCHAR *pdrive = drives;
+    while (*pdrive)
     {
-        szDrive[0] = *pDrive;
-        szDrive[1] = L':';
-        szDrive[2] = L'\0';
-        if (QueryDosDeviceW(szDrive, szDeviceName, MAX_PATH)) 
+        drive[0] = *pdrive; drive[1] = L':'; drive[2] = L'\0';
+        devname[0] = L'\0';
+        size_t devnamelen = 0;
+        if (QueryDosDeviceW(drive, devname, MAX_PATH))
         {
-            size_t cchDevName = wcslen(szDeviceName);
-            if (cchDevName > 0 && _wcsnicmp(szNtPath, szDeviceName, cchDevName) == 0) 
+            UINT drivertype = GetDriveTypeW(drive);
+            if (drivertype == DRIVE_REMOTE)
             {
-                if (pobjninfo->Name.Length - (cchDevName - 3) * sizeof(wchar_t) > maxsize) return false;
-                wcscpy(path, szDrive);
-                wcscat(path, szNtPath + cchDevName);
+                // \Device\hgfs\;Z:000000000003cb8d\vmware-host\Shared  Z:000000000003cb8d is LUID
+                wchar_t *luid_start = wcschr(devname, L';');
+                wchar_t *luid_end = wcschr(luid_start, L'\\') + 1;
+                wcscpy(luid_start, luid_end);
+            }
+            devnamelen = wcslen(devname);
+            if (devnamelen > 0 && _wcsnicmp(ntpath, devname, devnamelen) == 0)
+            {
+                if (pobjninfo->Name.Length - (devnamelen - 3) * sizeof(wchar_t) > maxsize) return false;
+                wcscpy(path, drive);
+                wcscat(path, ntpath + devnamelen);
                 return true;
             }
         }
-        pDrive += wcslen(pDrive) + 1;
+
+        pdrive += wcslen(pdrive) + 1;
     }
     return false;
 }
@@ -1337,4 +1346,6 @@ void winoverride_uninstall(bool uninit_minhook)
  * v0.2, fix _gen_redirect_path with non-zero end path
  *       add NtQueryInformationByName, NtQueryObject stub, filepathw function
  *       add _parse_query_fileinfo FileBothDirectoryInformation filesize redirect,
+ * v0.2.1, fix NtQueryObject buffer alignment
+ *         support winoverride_filepathw with DRIVE_REMOTE
  */
