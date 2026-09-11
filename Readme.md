@@ -84,5 +84,5 @@ msbuild libwinoverride.vcxproj -p:configuration=release -p:Platform=x64
 
 - [x] unity resources.assets redirect failed if larger than original file
       caused by `NtQueryFullAttributesFile`
-- [x] d.c.4 Plus redirect failed if larger than original file
+- [x] d.c.4 Plus Harmony redirect failed if larger than original file
       caused by `NtQueryDirectoryFileEx`, `FileBothDirectoryInformation`

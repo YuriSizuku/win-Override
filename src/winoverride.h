@@ -1,6 +1,6 @@
 /**
  * single header file for overriding files, codepage and fonts
- *   v0.2.1 developed by devseed
+ *   v0.2.2 developed by devseed
  *
  * macros:
  *    WINOVERRIDE_IMPLEMENTATION, include implements of each function
@@ -19,7 +19,7 @@
 extern "C" {
 #endif
 
-#define WINOVERRIDE_VERSION "0.2.1"
+#define WINOVERRIDE_VERSION "0.2.2"
 
 #include <stdbool.h>
 #ifdef USECOMPAT
@@ -68,7 +68,7 @@ void winoverride_uninstall(bool unint_minhook);
 
 #ifdef USECOMPAT
 #include "stb_minhook_v1_3_4.h"
-#include "windynntdll_v0_1_2.h"
+#include "windynntdll_v0_1_3.h"
 #include "windynkernel32_v0_1_7.h"
 #include "windyngdi32_v0_1.h"
 #else
@@ -154,7 +154,7 @@ static BOOL _compose_redirect_path(const wchar_t *cwd, const wchar_t *rel, const
     return TRUE;
 }
 
-static BOOL _gen_redirect_path(const POBJECT_ATTRIBUTES objattr, wchar_t *rel, wchar_t *target)
+static BOOL _get_redirect_path(const POBJECT_ATTRIBUTES objattr, wchar_t *rel, wchar_t *target)
 {
     if (!objattr || !objattr->ObjectName || !rel || !target) return FALSE;
     wchar_t cwd[MAX_PATH] = { 0 }, inpath[MAX_PATH] = { 0 };
@@ -169,7 +169,6 @@ static BOOL _gen_redirect_path(const POBJECT_ATTRIBUTES objattr, wchar_t *rel, w
     return FALSE;
 }
 
-// only FileBothDirectoryInformation is tested
 static void _parse_query_fileinfo(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
     PVOID FileInformation, ULONG Length, FILE_INFORMATION_CLASS FileInformationClass)
 {
@@ -184,11 +183,13 @@ static void _parse_query_fileinfo(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBl
     PFILE_STANDARD_INFORMATION pfstdinfo = NULL;
     PFILE_NAME_INFORMATION pfnameinfo = NULL;
     PFILE_ALL_INFORMATION pfallinfo = NULL;
-    FILE_NETWORK_OPEN_INFORMATION fnetinfo;
+    PFILE_ID_EXTD_BOTH_DIR_INFORMATION pfidinfo = NULL;
+    PFILE_STAT_INFORMATION pfstatinfo = NULL;
     OBJECT_ATTRIBUTES objattr = { 0 };
     UNICODE_STRING objname = { .Buffer=target, .Length=0, .MaximumLength=sizeof(cwd)};
     objattr.Length = sizeof(OBJECT_ATTRIBUTES);
     objattr.ObjectName = &objname;
+    FILE_NETWORK_OPEN_INFORMATION fnetinfo;
 
     if (!NT_SUCCESS(IoStatusBlock->Status)) return;
     if (FileHandle)
@@ -203,7 +204,7 @@ static void _parse_query_fileinfo(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBl
     LOGLi(L"DIR %ls handle=%p\n", rel, FileHandle);
     switch ((int)FileInformationClass)
     {
-    case 2: // FileFullDirectoryInformation
+    case 2: // FileFullDirectoryInformation, not test
         do
         {
             pffdirinfo = (PFILE_FULL_DIR_INFORMATION)((size_t)FileInformation + cur);
@@ -223,7 +224,7 @@ static void _parse_query_fileinfo(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBl
             i++;
         } while (pffdirinfo->NextEntryOffset && cur < Length);
         break;
-    case 3: // FileBothDirectoryInformation, query file size might here
+    case 3: // FileBothDirectoryInformation for winxp, win11
         do
         {
             pfbdirinfo = (PFILE_BOTH_DIR_INFORMATION)((size_t)FileInformation + cur);
@@ -255,7 +256,27 @@ static void _parse_query_fileinfo(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBl
     case 18: // FileAllInformation
         pfallinfo = (PFILE_ALL_INFORMATION)FileInformation;
         break;
+    case 63: // FileIdExtdBothDirectoryInformation for wine
+        do
+        {
+            pfidinfo = (PFILE_ID_EXTD_BOTH_DIR_INFORMATION)((size_t)FileInformation + cur);
+            memcpy(file, pfidinfo->FileName, pfidinfo->FileNameLength);
+            file[pfidinfo->FileNameLength / 2] = L'\0';
+            LOGLi(L"FileIdExtdBothDirectoryInformation FILE%d %ls\n", i, file);
+            _compose_redirect_path(cwd, rel, file, objname.Buffer);
+            objname.Length = (USHORT)(wcslen(objname.Buffer) * sizeof(WCHAR));
+            status = NtQueryFullAttributesFile_org(&objattr, &fnetinfo);
+            if (NT_SUCCESS(status))
+            {
+                pfidinfo->EndOfFile = fnetinfo.EndOfFile;
+                LOGLi(L"REDIRECT %ls\\%ls size=0x%llx\n", rel, file, fnetinfo.EndOfFile.QuadPart);
+            }
+            cur += pfidinfo->NextEntryOffset;
+            i++;
+        } while (pfidinfo->NextEntryOffset && cur < Length);
+        break;
     case 68: // FileStatInformation
+        pfstatinfo = (PFILE_STAT_INFORMATION)FileInformation;
         break;
     default:
         break;
@@ -287,7 +308,7 @@ static NTSTATUS NTAPI NtCreateFile_hook(
 
     if ((DesiredAccess & FILE_GENERIC_READ) || (DesiredAccess & FILE_GENERIC_EXECUTE))
     {
-        if (!_gen_redirect_path(ObjectAttributes, rel, target)) goto NtCreateFile_hook_end;
+        if (!_get_redirect_path(ObjectAttributes, rel, target)) goto NtCreateFile_hook_end;
         PUNICODE_STRING pustrorg = ObjectAttributes->ObjectName;
         UNICODE_STRING ustr = {(USHORT)wcslen(target) * 2, sizeof(target), target};
         ObjectAttributes->ObjectName = &ustr;
@@ -338,7 +359,7 @@ static NTSTATUS NTAPI NtOpenFile_hook(
 
     if ((DesiredAccess & FILE_GENERIC_READ) || (DesiredAccess & FILE_GENERIC_EXECUTE))
     {
-        if (!_gen_redirect_path(ObjectAttributes, rel, target)) goto NtOpenFile_hook_end;
+        if (!_get_redirect_path(ObjectAttributes, rel, target)) goto NtOpenFile_hook_end;
         PUNICODE_STRING pustrorg = ObjectAttributes->ObjectName;
         UNICODE_STRING ustr = { (USHORT)wcslen(target) * 2, sizeof(target), target };
         ObjectAttributes->ObjectName = &ustr;
@@ -436,7 +457,7 @@ static NTSTATUS NTAPI NtQueryAttributesFile_hook(
     return status;
 }
 
-// important for file size
+// GetFileAttributesEx will use this to get file size
 static NTSTATUS NTAPI NtQueryFullAttributesFile_hook(
     IN POBJECT_ATTRIBUTES ObjectAttributes,
     OUT PFILE_NETWORK_OPEN_INFORMATION FileInformation)
@@ -446,7 +467,7 @@ static NTSTATUS NTAPI NtQueryFullAttributesFile_hook(
     BOOL flag_redirect = FALSE;
     wchar_t rel[MAX_PATH] = { 0 }, target[MAX_PATH] = { 0 };
 
-    if (!_gen_redirect_path(ObjectAttributes, rel, target)) goto NtQueryFullAttributesFile_hook_end;
+    if (!_get_redirect_path(ObjectAttributes, rel, target)) goto NtQueryFullAttributesFile_hook_end;
     PUNICODE_STRING pustrorg = ObjectAttributes->ObjectName;
     UNICODE_STRING ustr = { (USHORT)wcslen(target) * 2, sizeof(target), target };
     ObjectAttributes->ObjectName = &ustr;
@@ -483,7 +504,7 @@ static NTSTATUS NTAPI NtQueryInformationByName_hook(
     BOOL flag_redirect = FALSE;
     wchar_t rel[MAX_PATH] = { 0 }, target[MAX_PATH] = { 0 };
 
-    if (!_gen_redirect_path(ObjectAttributes, rel, target)) goto NtQueryInformationByName_hook_end;
+    if (!_get_redirect_path(ObjectAttributes, rel, target)) goto NtQueryInformationByName_hook_end;
     PUNICODE_STRING pustrorg = ObjectAttributes->ObjectName;
     UNICODE_STRING ustr = { (USHORT)wcslen(target) * 2, sizeof(target), target };
     ObjectAttributes->ObjectName = &ustr;
@@ -549,7 +570,7 @@ static NTSTATUS NTAPI NtQueryDirectoryFile_hook(
     return status;
 }
 
-// it will query file size in a directory
+// FindFirstFile FindNextFile will use this to get file size
 static NTSTATUS NTAPI NtQueryDirectoryFileEx_hook(
     IN HANDLE FileHandle,
     IN HANDLE Event,
@@ -1008,6 +1029,12 @@ bool winoverride_filepathw(const HANDLE hfile, wchar_t *path, size_t maxsize)
     if (!NT_SUCCESS(status)) return false;
     PWCHAR ntpath = pobjninfo->Name.Buffer;
     pobjninfo->Name.Buffer[pobjninfo->Name.Length / sizeof(WCHAR)] = L'\0';
+    if (!wcsncmp(ntpath, L"\\??\\", 4)) // wine
+    {
+        if (pobjninfo->Name.Length - 5 * sizeof(wchar_t) > maxsize) return false;
+        wcscpy(path, ntpath + 4);
+        return true;
+    }
 
     // query driver string
     WCHAR drives[512] = {0}; // C:\\ \0 D:\\ \0 ...
@@ -1030,13 +1057,25 @@ bool winoverride_filepathw(const HANDLE hfile, wchar_t *path, size_t maxsize)
                 wchar_t *luid_end = wcschr(luid_start, L'\\') + 1;
                 wcscpy(luid_start, luid_end);
             }
+
             devnamelen = wcslen(devname);
-            if (devnamelen > 0 && _wcsnicmp(ntpath, devname, devnamelen) == 0)
+            if (devnamelen > 0 && !_wcsnicmp(ntpath, devname, devnamelen))
             {
                 if (pobjninfo->Name.Length - (devnamelen - 3) * sizeof(wchar_t) > maxsize) return false;
                 wcscpy(path, drive);
                 wcscat(path, ntpath + devnamelen);
                 return true;
+            }
+            else if (!_wcsnicmp(ntpath, L"\\Device\\Mup", 11) && !_wcsnicmp(devname, L"\\Device\\hgfs", 12))
+            {
+                // fix \Device\Mup and \Device\hgfs problem
+                if (!_wcsnicmp(ntpath + 11, devname + 12, devnamelen - 12))
+                {
+                    if (pobjninfo->Name.Length - (devnamelen - 3) * sizeof(wchar_t) > maxsize) return false;
+                    wcscpy(path, drive);
+                    wcscat(path, ntpath + devnamelen - 1); // Mup shorter 1 char then hgfs
+                    return true;
+                }
             }
         }
 
@@ -1343,9 +1382,12 @@ void winoverride_uninstall(bool uninit_minhook)
  * v0.1.7, add WINOVERRIDE_NOFILE, WINOVERRIDE_NOFONT, WINOVERRIDE_NOCODEPAGE
  * v0.1.8, support override codepage
  * v0.1.9, support override font
- * v0.2, fix _gen_redirect_path with non-zero end path
+ * v0.2, fix _get_redirect_path with non-zero end path
  *       add NtQueryInformationByName, NtQueryObject stub, filepathw function
  *       add _parse_query_fileinfo FileBothDirectoryInformation filesize redirect,
  * v0.2.1, fix NtQueryObject buffer alignment
  *         support winoverride_filepathw with DRIVE_REMOTE
+ * v0.2.2, fix winoverride_filepathw \Device\Mup path in DRIVE_REMOTE
+ *         add _parse_query_fileinfo FileIdExtdBothDirectoryInformation for wine
+ *          
  */
